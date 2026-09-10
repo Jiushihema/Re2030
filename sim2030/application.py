@@ -1,4 +1,4 @@
-"""运行调度与五平面编排。
+﻿"""运行调度与五平面编排。
 
 ``Application`` 只负责组装完整运行上下文并按固定顺序推进，不包含设备业务逻辑。
 攻击/识别/防御/演示平面接入后复用同一 ``step()`` 顺序。
@@ -450,7 +450,27 @@ class Application:
     # 内部方法：展示视图
     # ──────────────────────────────────────────────
     def _summary(self) -> Dict[str, Any]:
+                # 提取在途报文流
+        in_flight_messages = []
+        if self.engine is not None and hasattr(self.engine, "_network"):
+            for item in self.engine._network._queue:
+                msg = item[2]
+                in_flight_messages.append({
+                    "message_id": msg.message_id,
+                    "sender_id": msg.sender_id,
+                    "receiver_id": msg.receiver_id,
+                    "business_type": msg.business_type,
+                    "deliver_time_us": msg.deliver_time_us,
+                })
+
+        # 提取全站环境物理量
+        environment = {}
+        if self.engine is not None and hasattr(self.engine, "_environment"):
+            environment = self.engine._environment.snapshot()
+
         return {
+            "environment": environment,
+            "in_flight_messages": in_flight_messages,
             "run_id": self.run_id,
             "status": self.status,
             "time_us": self.current_time_us,
@@ -474,7 +494,27 @@ class Application:
                     "name": device.name,
                     "ports": device.ports,
                 })
+                # 提取在途报文流
+        in_flight_messages = []
+        if self.engine is not None and hasattr(self.engine, "_network"):
+            for item in self.engine._network._queue:
+                msg = item[2]
+                in_flight_messages.append({
+                    "message_id": msg.message_id,
+                    "sender_id": msg.sender_id,
+                    "receiver_id": msg.receiver_id,
+                    "business_type": msg.business_type,
+                    "deliver_time_us": msg.deliver_time_us,
+                })
+
+        # 提取全站环境物理量
+        environment = {}
+        if self.engine is not None and hasattr(self.engine, "_environment"):
+            environment = self.engine._environment.snapshot()
+
         return {
+            "environment": environment,
+            "in_flight_messages": in_flight_messages,
             "run_id": self.run_id,
             "status": self.status,
             "time_us": self.current_time_us,
@@ -486,7 +526,27 @@ class Application:
         }
 
     def _timeline_view(self) -> Dict[str, Any]:
+                # 提取在途报文流
+        in_flight_messages = []
+        if self.engine is not None and hasattr(self.engine, "_network"):
+            for item in self.engine._network._queue:
+                msg = item[2]
+                in_flight_messages.append({
+                    "message_id": msg.message_id,
+                    "sender_id": msg.sender_id,
+                    "receiver_id": msg.receiver_id,
+                    "business_type": msg.business_type,
+                    "deliver_time_us": msg.deliver_time_us,
+                })
+
+        # 提取全站环境物理量
+        environment = {}
+        if self.engine is not None and hasattr(self.engine, "_environment"):
+            environment = self.engine._environment.snapshot()
+
         return {
+            "environment": environment,
+            "in_flight_messages": in_flight_messages,
             "run_id": self.run_id,
             "time_us": self.current_time_us,
             "attacks": self.attack_planner.attacks(),
