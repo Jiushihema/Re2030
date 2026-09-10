@@ -1,60 +1,242 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>2030 仿真系统演示平面</title>
-  <link rel="stylesheet" href="/style.css">
+  <title>国家重点研发计划2030 · 感控系统安全态势大屏</title>
+  <link rel="stylesheet" href="/style.css?v=20260910_v12">
 </head>
 <body>
+  <!-- 顶部状态栏 -->
   <header class="topbar">
-    <h1>2030 仿真系统 · 演示平面</h1>
-    <div id="status-bar" class="status-bar">未连接</div>
+    <div class="brand">
+      <div class="brand-logo">
+        <span class="shield-icon">⛨</span>
+      </div>
+      <div class="brand-text">
+        <h1>感控设备信号攻击监测与态势感知平台</h1>
+        <span class="sub-title">国家重点研发计划课题三 · 变电站感控系统仿真底座</span>
+      </div>
+    </div>
+
+    <!-- 顶部核心态势统计指标卡片 -->
+    <div class="metric-ribbon">
+      <div class="metric-card" id="m-status-card">
+        <div class="metric-label">运行状态</div>
+        <div class="metric-value status-tag" id="m-status">IDLE</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">仿真时间</div>
+        <div class="metric-value" id="m-time">0.000 s</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">受控设备 / 链路</div>
+        <div class="metric-value"><span id="m-devices">0</span> <span class="unit">/</span> <span id="m-links">0</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">观测事件</div>
+        <div class="metric-value text-cyan" id="m-obs-events">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">监测告警 (缺/迟)</div>
+        <div class="metric-value text-yellow"><span id="m-obs-missing">0</span> <span class="unit">/</span> <span id="m-obs-late">0</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">攻击威胁 / 处置</div>
+        <div class="metric-value"><span id="m-threats" class="text-danger">0</span> <span class="unit">/</span> <span id="m-defenses" class="text-success">0</span></div>
+      </div>
+    </div>
+
+    <div class="top-status-indicator">
+      <span class="pulse-dot" id="live-dot"></span>
+      <span id="status-bar" class="status-bar">就绪</span>
+    </div>
   </header>
 
+  <!-- 主屏三栏布局 -->
   <main class="layout">
-    <aside class="panel scenarios-panel">
-      <h2>场景</h2>
+    <!-- 左侧：场景选择与控制中心 -->
+    <aside class="panel side-panel left-panel">
+      <div class="panel-header">
+        <span class="icon">▤</span>
+        <h2>场景与运行控制</h2>
+      </div>
+
+      <div class="section-title">仿真场景列表</div>
       <ul id="scenario-list" class="scenario-list"></ul>
-      <button id="create-run" class="btn" disabled>创建运行</button>
-      <div class="run-info">
-        <label>run_id</label>
-        <code id="run-id">-</code>
+      <button id="create-run" class="btn btn-primary btn-block" disabled>加载并创建运行</button>
+
+      <div class="run-meta-box">
+        <div class="meta-row">
+          <span class="meta-label">RUN ID:</span>
+          <code id="run-id" class="meta-code">-</code>
+        </div>
+      </div>
+
+      <div class="section-title">推演控制步进</div>
+      <div class="control-btn-group">
+        <button class="btn btn-control" data-action="start" id="btn-start" title="开始运行">▶ 开始</button>
+        <button class="btn btn-control" data-action="pause" id="btn-pause" title="暂停运行">❚❚ 暂停</button>
+        <button class="btn btn-control" data-action="stop" id="btn-stop" title="停止运行">⏹ 停止</button>
+      </div>
+
+      <div class="auto-driver-box">
+        <label class="toggle-control">
+          <input type="checkbox" id="auto-step-toggle">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">自动推演步进 (1s/步)</span>
+        </label>
+        <button class="btn btn-outline btn-block" id="btn-single-step">单步推演 (+100ms)</button>
+      </div>
+
+      <div class="section-title">下发业务操作</div>
+      <form id="operation-form" class="operation-form">
+        <div class="form-group">
+          <label>目标受控设备</label>
+          <input id="op-target" placeholder="请在拓扑中点选受控设备" readonly>
+        </div>
+        <div class="form-group">
+          <label>动作指令</label>
+          <select id="op-action-select" class="form-select" disabled>
+            <option value="">请先在拓扑中选择设备</option>
+          </select>
+        </div>
+        <div class="form-group" id="op-param-group" style="display:none;">
+          <label id="op-param-label">附加参数 (如分接档位)</label>
+          <input id="op-param-val" type="number" min="1" max="9" value="6" placeholder="数值">
+        </div>
+        <button class="btn btn-action btn-block" id="btn-submit-op" type="submit" disabled>下发控制命令</button>
+      </form>
+
+      <div class="section-title">时刻历史快照回放</div>
+      <div class="replay-group">
+        <input id="replay-time" type="number" step="100000" placeholder="时刻 (μs)" value="0">
+        <button class="btn btn-secondary" id="seek-replay">快照</button>
       </div>
     </aside>
 
-    <section class="panel controls-panel">
-      <h2>运行控制</h2>
-      <div class="controls">
-        <button class="btn" data-action="start">开始</button>
-        <button class="btn" data-action="pause">暂停</button>
-        <button class="btn" data-action="stop">停止</button>
+    <!-- 中间：核心态势感知拓扑大屏与主视图区 -->
+    <section class="panel center-panel">
+      <div class="panel-header tab-header">
+        <div class="tabs">
+          <button class="tab active" data-view="system">⚡ 变电站态势拓扑</button>
+          <button class="tab" data-view="timeline">⏳ 攻防时序时间线</button>
+          <button class="tab" data-view="observations">📡 五类全域监测</button>
+          <button class="tab" data-view="recognition">🔍 智能攻击识别</button>
+          <button class="tab" data-view="defense">🛡 主动安全防御</button>
+          <button class="tab" data-view="evaluation">📊 效能评估对比</button>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-icon" id="btn-refresh" title="即时刷新" style="padding: 6px 10px; font-size: 14px;">↻</button>
+        </div>
       </div>
-      <form id="operation-form" class="operation-form">
-        <input id="op-target" placeholder="目标设备" value="brk">
-        <input id="op-action" placeholder="动作类型" value="close">
-        <button class="btn" type="submit">提交操作</button>
-      </form>
-      <div class="replay">
-        <label>回放时刻(μs)</label>
-        <input id="replay-time" type="number" value="0">
-        <button class="btn" id="seek-replay">定位回放</button>
+
+      <!-- 拓扑主工作区容器 -->
+      <div id="topo-container" class="topo-container">
+        <!-- 两行规范化拓扑图例与状态面板 -->
+        <div class="topo-legend">
+          <!-- 第一行：四种链路样式说明 -->
+          <div class="legend-row">
+            <span class="legend-row-label">链路定义:</span>
+            <div class="legend-item" title="站内以太网数字通信总线 (MMS/GOOSE/SV)"><span class="legend-line line-wired"></span> 站内网络总线 (以太网)</div>
+            <div class="legend-item" title="控制接口至一次设备电磁线圈的硬接线控制回路"><span class="legend-line line-hardwire"></span> 接口控制硬接线 (直连)</div>
+            <div class="legend-item" title="一次主干回路高压电气主接线"><span class="legend-line line-elec"></span> 10kV电气主回路 (主干)</div>
+            <div class="legend-item" title="变压器本体热传导至油温计的物理接触测量关系"><span class="legend-line line-physical"></span> 热传导物理耦合 (测温)</div>
+          </div>
+
+          <!-- 第二行：三种节点状态与实时关键全站物理量数据 -->
+          <div class="legend-row" style="margin-top: 5px;">
+            <div class="legend-subrow-left">
+              <span class="legend-row-label">节点状态:</span>
+              <div class="legend-item" title="设备正常稳态运行"><span class="legend-dot dot-normal"></span> 正常运行</div>
+              <div class="legend-item" title="识别平面命中可疑特征/观测时窗异常"><span class="legend-dot dot-suspect"></span> 疑似异常</div>
+              <div class="legend-item" title="受到攻击平面 EffectRequest 物理/通信致效作用"><span class="legend-dot dot-attacked"></span> 攻击受损</div>
+            </div>
+
+            <div class="legend-subrow-right">
+              <span class="data-cell">全站母线: <strong id="env-bus-v" class="num-slot" style="color:#38bdf8;">10.00</strong> kV</span>
+              <span class="data-sep">|</span>
+              <span class="data-cell">线路电流: <strong id="env-line-i" class="num-slot" style="color:#38bdf8;">0.00</strong> A</span>
+              <span class="data-sep">|</span>
+              <span class="data-cell">在途报文: <strong id="env-in-flight" class="num-slot num-slot-sm" style="color:#10b981;">0</strong> 帧</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- SVG 拓扑画布 -->
+        <svg id="topo-svg" class="topo-svg" viewBox="0 0 920 620" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="grad-station" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1e293b" />
+              <stop offset="100%" stop-color="#0f172a" />
+            </linearGradient>
+            <filter id="glow-danger" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#ef4444" flood-opacity="0.8"/>
+            </filter>
+            <filter id="glow-warning" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#f59e0b" flood-opacity="0.7"/>
+            </filter>
+            <filter id="glow-selected" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#38bdf8" flood-opacity="0.9"/>
+            </filter>
+          </defs>
+
+          <!-- 背景分层标尺与区域背景 -->
+          <g class="topo-layers-bg">
+            <rect x="10" y="15" width="900" height="110" rx="8" class="layer-band band-station"></rect>
+            <text x="25" y="38" class="layer-title">站控层 (STATION LAYER)</text>
+
+            <rect x="10" y="145" width="900" height="130" rx="8" class="layer-band band-bay"></rect>
+            <text x="25" y="168" class="layer-title">间隔层 (BAY LAYER)</text>
+
+            <rect x="10" y="295" width="900" height="310" rx="8" class="layer-band band-process"></rect>
+            <text x="25" y="318" class="layer-title">过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)</text>
+          </g>
+
+          <!-- 拓扑连接线图层 -->
+          <g id="topo-links" class="topo-links-layer"></g>
+
+          <!-- 报文流粒子动画图层 -->
+          <g id="topo-packets" class="topo-packets-layer"></g>
+
+          <!-- 拓扑设备节点图层 -->
+          <g id="topo-nodes" class="topo-nodes-layer"></g>
+        </svg>
+      </div>
+
+      <!-- 其它TAB视图的展示容器 -->
+      <div id="sub-view-container" class="sub-view-container" style="display:none;">
+        <div id="view-content" class="view-content"></div>
       </div>
     </section>
 
-    <section class="panel view-panel">
-      <div class="tabs">
-        <button class="tab active" data-view="system">系统视图</button>
-        <button class="tab" data-view="timeline">时间线</button>
-        <button class="tab" data-view="observations">观测</button>
-        <button class="tab" data-view="recognition">识别</button>
-        <button class="tab" data-view="defense">防御</button>
-        <button class="tab" data-view="evaluation">评估</button>
+    <!-- 右侧：选定设备状态监测与告警列表 -->
+    <aside class="panel side-panel right-panel">
+      <div class="panel-header">
+        <span class="icon">🔍</span>
+        <h2>设备详情与实时态势</h2>
       </div>
-      <div id="view-content" class="view-content"></div>
-    </section>
+
+      <div id="device-inspector" class="device-inspector">
+        <div class="inspector-placeholder">请在拓扑中点击任意节点查看设备物理量及受损状态</div>
+      </div>
+
+      <div class="panel-header" style="margin-top: 14px;">
+        <span class="icon">🔔</span>
+        <h2>动态攻防/监测事件</h2>
+      </div>
+      <div id="alert-feed" class="alert-feed">
+        <div class="alert-empty">暂无告警记录</div>
+      </div>
+    </aside>
   </main>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20260910_v8"></script>
 </body>
 </html>
+
+
+
+
+
+
