@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2030 仿真系统演示平面</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>2030 仿真系统 · 演示平面</h1>
+    <div id="status-bar" class="status-bar">未连接</div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel scenarios-panel">
+      <h2>场景</h2>
+      <ul id="scenario-list" class="scenario-list"></ul>
+      <button id="create-run" class="btn" disabled>创建运行</button>
+      <div class="run-info">
+        <label>run_id</label>
+        <code id="run-id">-</code>
+      </div>
+    </aside>
+
+    <section class="panel controls-panel">
+      <h2>运行控制</h2>
+      <div class="controls">
+        <button class="btn" data-action="start">开始</button>
+        <button class="btn" data-action="pause">暂停</button>
+        <button class="btn" data-action="stop">停止</button>
+      </div>
+      <form id="operation-form" class="operation-form">
+        <input id="op-target" placeholder="目标设备" value="brk">
+        <input id="op-action" placeholder="动作类型" value="close">
+        <button class="btn" type="submit">提交操作</button>
+      </form>
+      <div class="replay">
+        <label>回放时刻(μs)</label>
+        <input id="replay-time" type="number" value="0">
+        <button class="btn" id="seek-replay">定位回放</button>
+      </div>
+    </section>
+
+    <section class="panel view-panel">
+      <div class="tabs">
+        <button class="tab active" data-view="system">系统视图</button>
+        <button class="tab" data-view="timeline">时间线</button>
+        <button class="tab" data-view="observations">观测</button>
+        <button class="tab" data-view="recognition">识别</button>
+        <button class="tab" data-view="defense">防御</button>
+        <button class="tab" data-view="evaluation">评估</button>
+      </div>
+      <div id="view-content" class="view-content"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

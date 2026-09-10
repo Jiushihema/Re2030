@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 运行产物
+runs/
+env_dump.txt
+eval_dump.txt
+
+# 本地压缩包
+codes.zip
+
+# IDE
+.idea/
+.vscode/
+
+# 文档中的大型二进制参考资料（保留本地方便查阅，不上传仓库）
+docs/references/
+docs/*.docx

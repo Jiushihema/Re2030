@@ -1,0 +1,643 @@
+{
+  "scenario_id": "substation-001",
+  "name": "10kV 变电站基础场景",
+  "simulation": {
+    "dt_us": 100000,
+    "duration_us": 5000000,
+    "random_seed": 42,
+    "start_time": "2026-01-01T00:00:00+08:00"
+  },
+  "devices": [
+    {
+      "device_id": "station",
+      "device_type": "station_control",
+      "layer": "station",
+      "name": "站端监控系统",
+      "ports": {
+        "mc_breaker": "mc",
+        "prot": "prot"
+      },
+      "parameters": {
+        "dispatch": {
+          "brk": "mc_breaker",
+          "tap": "mc_breaker",
+          "cool": "mc_breaker"
+        }
+      }
+    },
+    {
+      "device_id": "mc",
+      "device_type": "measurement_control",
+      "layer": "bay",
+      "name": "测控装置",
+      "ports": {
+        "up": "up",
+        "mu": "mu",
+        "brk_cmd": "brk_cmd",
+        "tap_cmd": "tap_cmd",
+        "cool_cmd": "cool_cmd"
+      },
+      "parameters": {
+        "mu_port": "mu",
+        "command_ports": {
+          "close": "brk_cmd",
+          "open": "brk_cmd",
+          "set_tap": "tap_cmd",
+          "start": "cool_cmd",
+          "stop": "cool_cmd"
+        },
+        "allowed_actions": [
+          "close",
+          "open",
+          "set_tap",
+          "start",
+          "stop"
+        ],
+        "report_interval_us": 100000
+      }
+    },
+    {
+      "device_id": "prot",
+      "device_type": "overcurrent_protection",
+      "layer": "bay",
+      "name": "过流保护装置",
+      "ports": {
+        "in": "in",
+        "out": "out",
+        "up": "up"
+      },
+      "parameters": {
+        "in_port": "in",
+        "out_port": "out",
+        "up_port": "up",
+        "eval_interval_us": 100000,
+        "overcurrent_threshold_a": 50.0,
+        "duration_ticks": 2,
+        "value_key": "ct_current"
+      }
+    },
+    {
+      "device_id": "ctl_brk",
+      "device_type": "control_interface",
+      "layer": "process",
+      "name": "断路器智能终端",
+      "ports": {
+        "up": "up",
+        "down": "down"
+      },
+      "parameters": {
+        "up_port": "up",
+        "down_port": "down",
+        "action_map": {}
+      }
+    },
+    {
+      "device_id": "ctl_tap",
+      "device_type": "control_interface",
+      "layer": "process",
+      "name": "分接机构控制接口",
+      "ports": {
+        "up": "up",
+        "down": "down"
+      },
+      "parameters": {
+        "up_port": "up",
+        "down_port": "down",
+        "action_map": {}
+      }
+    },
+    {
+      "device_id": "ctl_cool",
+      "device_type": "control_interface",
+      "layer": "process",
+      "name": "冷却系统控制接口",
+      "ports": {
+        "up": "up",
+        "down": "down"
+      },
+      "parameters": {
+        "up_port": "up",
+        "down_port": "down",
+        "action_map": {}
+      }
+    },
+    {
+      "device_id": "brk",
+      "device_type": "switch",
+      "layer": "process",
+      "name": "断路器",
+      "ports": {
+        "control": "control",
+        "physical": "physical"
+      },
+      "parameters": {
+        "control_port": "control",
+        "initial_position": "open",
+        "default_duration_ms": 0
+      },
+      "initial_state": {
+        "position": "open"
+      },
+      "capabilities": [
+        {
+          "action_type": "close",
+          "parameter_ranges": {},
+          "readable_state": [
+            "position"
+          ]
+        },
+        {
+          "action_type": "open",
+          "parameter_ranges": {},
+          "readable_state": [
+            "position"
+          ]
+        }
+      ]
+    },
+    {
+      "device_id": "tap",
+      "device_type": "transformer",
+      "layer": "process",
+      "name": "变压器",
+      "ports": {
+        "control": "control",
+        "physical": "physical"
+      },
+      "parameters": {
+        "control_port": "control",
+        "nominal_tap": 5,
+        "initial_oil_temp_c": 40.0,
+        "default_duration_ms": 0
+      },
+      "initial_state": {
+        "tap_position": 5,
+        "oil_temp_c": 40.0
+      },
+      "capabilities": [
+        {
+          "action_type": "set_tap",
+          "parameter_ranges": {
+            "tap_position": [
+              1,
+              9
+            ]
+          },
+          "readable_state": [
+            "tap_position",
+            "oil_temp_c"
+          ]
+        }
+      ]
+    },
+    {
+      "device_id": "cool",
+      "device_type": "auxiliary",
+      "layer": "process",
+      "name": "冷却风机",
+      "ports": {
+        "control": "control",
+        "physical": "physical"
+      },
+      "parameters": {
+        "control_port": "control",
+        "initial_running": false
+      },
+      "initial_state": {
+        "running": false,
+        "speed_ratio": 1.0
+      },
+      "capabilities": [
+        {
+          "action_type": "start",
+          "parameter_ranges": {},
+          "readable_state": [
+            "running"
+          ]
+        },
+        {
+          "action_type": "stop",
+          "parameter_ranges": {},
+          "readable_state": [
+            "running"
+          ]
+        }
+      ]
+    },
+    {
+      "device_id": "comp",
+      "device_type": "compensation",
+      "layer": "process",
+      "name": "无功补偿支路",
+      "ports": {
+        "control": "control",
+        "physical": "physical"
+      },
+      "parameters": {
+        "control_port": "control",
+        "initial_connected": false
+      },
+      "initial_state": {
+        "connected": false
+      },
+      "capabilities": [
+        {
+          "action_type": "connect",
+          "parameter_ranges": {},
+          "readable_state": [
+            "connected"
+          ]
+        },
+        {
+          "action_type": "disconnect",
+          "parameter_ranges": {},
+          "readable_state": [
+            "connected"
+          ]
+        }
+      ]
+    },
+    {
+      "device_id": "ct_current",
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "电流互感器",
+      "ports": {
+        "up": "up"
+      },
+      "parameters": {
+        "input_key": "line_current_a",
+        "unit": "A",
+        "sample_interval_us": 100000,
+        "up_port": "up"
+      }
+    },
+    {
+      "device_id": "vt_voltage",
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "电压互感器",
+      "ports": {
+        "up": "up"
+      },
+      "parameters": {
+        "input_key": "bus_voltage_kv",
+        "unit": "kV",
+        "sample_interval_us": 100000,
+        "up_port": "up"
+      }
+    },
+    {
+      "device_id": "oil_temp",
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "油温传感器",
+      "ports": {
+        "up": "up",
+        "physical": "physical"
+      },
+      "parameters": {
+        "input_key": "oil_temp_c",
+        "unit": "C",
+        "sample_interval_us": 1000000,
+        "up_port": "up"
+      }
+    },
+    {
+      "device_id": "mu",
+      "device_type": "acquisition",
+      "layer": "process",
+      "name": "合并单元",
+      "ports": {
+        "in": "in",
+        "out": "out"
+      },
+      "parameters": {
+        "report_interval_us": 100000,
+        "out_port": "out",
+        "output_business_type": "sampling"
+      }
+    },
+    {
+      "device_id": "time_svc",
+      "device_type": "time_service",
+      "layer": "station",
+      "name": "授时系统",
+      "ports": {
+        "sync": "sync"
+      },
+      "parameters": {
+        "sync_port": "sync",
+        "sync_interval_us": 1000000,
+        "time_source": "gnss"
+      }
+    }
+  ],
+  "links": [
+    {
+      "link_id": "L-station-mc",
+      "endpoint_a": [
+        "station",
+        "mc_breaker"
+      ],
+      "endpoint_b": [
+        "mc",
+        "up"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 1000
+      }
+    },
+    {
+      "link_id": "L-mu-mc",
+      "endpoint_a": [
+        "mu",
+        "out"
+      ],
+      "endpoint_b": [
+        "mc",
+        "mu"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 500
+      }
+    },
+    {
+      "link_id": "L-mu-prot",
+      "endpoint_a": [
+        "mu",
+        "out"
+      ],
+      "endpoint_b": [
+        "prot",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 500
+      }
+    },
+    {
+      "link_id": "L-ct-mu",
+      "endpoint_a": [
+        "ct_current",
+        "up"
+      ],
+      "endpoint_b": [
+        "mu",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
+      "link_id": "L-vt-mu",
+      "endpoint_a": [
+        "vt_voltage",
+        "up"
+      ],
+      "endpoint_b": [
+        "mu",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
+      "link_id": "L-oil-mu",
+      "endpoint_a": [
+        "oil_temp",
+        "up"
+      ],
+      "endpoint_b": [
+        "mu",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
+      "link_id": "L-mc-brk",
+      "endpoint_a": [
+        "mc",
+        "brk_cmd"
+      ],
+      "endpoint_b": [
+        "ctl_brk",
+        "up"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 1000
+      }
+    },
+    {
+      "link_id": "L-mc-tap",
+      "endpoint_a": [
+        "mc",
+        "tap_cmd"
+      ],
+      "endpoint_b": [
+        "ctl_tap",
+        "up"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 1000
+      }
+    },
+    {
+      "link_id": "L-mc-cool",
+      "endpoint_a": [
+        "mc",
+        "cool_cmd"
+      ],
+      "endpoint_b": [
+        "ctl_cool",
+        "up"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 1000
+      }
+    },
+    {
+      "link_id": "L-prot-brk",
+      "endpoint_a": [
+        "prot",
+        "out"
+      ],
+      "endpoint_b": [
+        "ctl_brk",
+        "up"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 800
+      }
+    },
+    {
+      "link_id": "L-prot-station",
+      "endpoint_a": [
+        "prot",
+        "up"
+      ],
+      "endpoint_b": [
+        "station",
+        "prot"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 1000
+      }
+    },
+    {
+      "link_id": "L-ctl-brk-down",
+      "endpoint_a": [
+        "ctl_brk",
+        "down"
+      ],
+      "endpoint_b": [
+        "brk",
+        "control"
+      ],
+      "link_type": "hardwire",
+      "parameters": {
+        "delay_us": 0
+      }
+    },
+    {
+      "link_id": "L-ctl-tap-down",
+      "endpoint_a": [
+        "ctl_tap",
+        "down"
+      ],
+      "endpoint_b": [
+        "tap",
+        "control"
+      ],
+      "link_type": "hardwire",
+      "parameters": {
+        "delay_us": 0
+      }
+    },
+    {
+      "link_id": "L-ctl-cool-down",
+      "endpoint_a": [
+        "ctl_cool",
+        "down"
+      ],
+      "endpoint_b": [
+        "cool",
+        "control"
+      ],
+      "link_type": "hardwire",
+      "parameters": {
+        "delay_us": 0
+      }
+    },
+    {
+      "link_id": "L-tap-oil",
+      "endpoint_a": [
+        "tap",
+        "physical"
+      ],
+      "endpoint_b": [
+        "oil_temp",
+        "physical"
+      ],
+      "link_type": "physical"
+    },
+    {
+      "link_id": "L-brk-tap",
+      "endpoint_a": [
+        "brk",
+        "physical"
+      ],
+      "endpoint_b": [
+        "tap",
+        "physical"
+      ],
+      "link_type": "electrical"
+    },
+    {
+      "link_id": "L-time-mu",
+      "endpoint_a": [
+        "time_svc",
+        "sync"
+      ],
+      "endpoint_b": [
+        "mu",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    }
+  ],
+  "environment": {
+    "nominal_voltage_kv": 10.0,
+    "load_active_mw": 2.0,
+    "load_reactive_mvar": 0.5,
+    "ambient_temp_c": 30.0,
+    "random_seed": 42,
+    "electrical": {
+      "tap_asset": "tap",
+      "compensation_asset": "comp",
+      "breaker_asset": "brk",
+      "cooling_asset": "cool",
+      "tap_step_ratio": 0.02,
+      "nominal_tap": 5,
+      "cap_voltage_boost_kv": 0.2
+    }
+  },
+  "operations": [
+    {
+      "time_us": 0,
+      "target_asset_id": "brk",
+      "action_type": "close",
+      "parameters": {}
+    },
+    {
+      "time_us": 200000,
+      "target_asset_id": "tap",
+      "action_type": "set_tap",
+      "parameters": {
+        "tap_position": 7
+      }
+    },
+    {
+      "time_us": 300000,
+      "target_asset_id": "cool",
+      "action_type": "start",
+      "parameters": {}
+    }
+  ],
+  "attacks": [],
+  "recognition": {
+    "enabled": false
+  },
+  "defense": {
+    "enabled": false
+  },
+  "observations": {
+    "schema_path": "../../docs/interfaces/monitoring-event.schema.json",
+    "provider_dir": "../../runs/providers",
+    "mode": "file"
+  },
+  "evaluation": {
+    "mode": "normal"
+  },
+  "references": {
+    "architecture": "docs/架构图依据说明.md"
+  }
+}
