@@ -18,9 +18,19 @@ class StationControlSystem(Device):
         super().__init__(spec)
         self.dispatch: Dict[str, str] = self.parameters.get("dispatch", {})
         self._overview: Dict[str, Dict[str, Any]] = {}
+        self._last_received: List[Dict[str, Any]] = []
+        self._last_dispatched: List[Dict[str, Any]] = []
 
     def update_overview(self, message: Message) -> None:
         self._overview[message.sender_id] = message.payload or {}
+        self._last_received.append({
+            "time_us": message.created_time_us,
+            "from": message.sender_id,
+            "type": message.business_type,
+            "request_id": message.related_request or "",
+            "payload": message.payload or {},
+        })
+        self._last_received = self._last_received[-8:]
 
     def receive(self, message: Message) -> None:
         if message.business_type == BusinessType.COMMAND:
@@ -30,19 +40,35 @@ class StationControlSystem(Device):
         else:
             self._inbox.append(message)
 
+    def _record_dispatch(self, message: Message, target: str, port: str, status: str, reason: str) -> None:
+        payload = message.payload or {}
+        self._last_dispatched.append({
+            "time_us": message.created_time_us,
+            "target": target,
+            "port": port,
+            "status": status,
+            "reason": reason,
+            "action": payload.get("action_type", ""),
+            "request_id": payload.get("request_id", ""),
+        })
+        self._last_dispatched = self._last_dispatched[-8:]
+
     def submit_operation(self, message: Message) -> None:
         payload = message.payload or {}
         target = payload.get("target_asset_id", "")
         port = self.dispatch.get(target, self.dispatch.get("*", ""))
         if not port:
+            reason = f"未配置目标 {target} 的转发端口"
+            self._record_dispatch(message, target, "", "rejected", reason)
             self._queue(
                 self._new_message(
                     "up", BusinessType.FEEDBACK,
-                    {"request_id": payload.get("request_id", ""), "status": "rejected", "reason": f"未配置目标 {target} 的转发端口"},
+                    {"request_id": payload.get("request_id", ""), "status": "rejected", "reason": reason},
                     message.created_time_us, related_request=payload.get("request_id", ""),
                 )
             )
             return
+        self._record_dispatch(message, target, port, "dispatched", "")
         self._queue(
             self._new_message(port, BusinessType.COMMAND, payload, message.created_time_us,
                               related_request=payload.get("request_id", ""))
@@ -55,6 +81,8 @@ class StationControlSystem(Device):
     def snapshot(self) -> Dict[str, Any]:
         data = super().snapshot()
         data["overview"] = dict(self._overview)
+        data["overview"]["last_received"] = list(self._last_received)
+        data["overview"]["last_dispatched"] = list(self._last_dispatched)
         return data
 
 

@@ -1,4 +1,4 @@
-﻿/* 2030 仿真系统演示平面：工业级深色态势感知拓扑大屏脚本 */
+/* 2030 仿真系统演示平面：工业级深色态势感知拓扑大屏脚本 */
 "use strict";
 
 const state = {
@@ -11,6 +11,7 @@ const state = {
   pollTimer: null,
   autoStepTimer: null,
   renderedTopologyOnce: false,
+  particleFilter: "all",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -56,6 +57,12 @@ function formatUs(us) {
   return (us / 1000000).toFixed(3) + " s";
 }
 
+function particleCategory(businessType) {
+  if (businessType === "sampling" || businessType === "status" || businessType === "sync") return "data";
+  if (businessType === "command" || businessType === "protection" || businessType === "feedback") return "command";
+  return "other";
+}
+
 /* 加载场景列表 */
 async function loadScenarios() {
   const payload = await api("GET", "/api/scenarios");
@@ -64,7 +71,7 @@ async function loadScenarios() {
   list.innerHTML = "";
   state.scenarios.forEach((scenario) => {
     const li = document.createElement("li");
-    li.innerHTML = `<strong>${esc(scenario.scenario_id)}</strong> · ${esc(scenario.name || "")}<br><span style="color:#94a3b8;font-size:11px;">设备 ${scenario.device_count} | 攻击 ${scenario.attack_count} | 攻防:${scenario.recognition_enabled ? "开" : "关"}</span>`;
+    li.innerHTML = `<strong>${esc(scenario.name || scenario.scenario_id)}</strong>`;
     li.dataset.scenarioId = scenario.scenario_id;
     li.addEventListener("click", () => {
       state.selectedScenario = scenario.scenario_id;
@@ -151,101 +158,227 @@ const DEVICE_NAME_MAP = {
   mu: "合并单元",
 };
 
-/* 预定义设备可执行能力动作字典与纯净中文选项（去除英文括号） */
-const DEVICE_CAPABILITY_MAP = {
-  brk: [
-    { action: "close", label: "合闸" },
-    { action: "open", label: "分闸" },
-  ],
-  tap: [
-    { action: "set_tap", label: "调节分接档位", needParam: "tap_position" },
-  ],
-  cool: [
-    { action: "start", label: "启动冷却风机" },
-    { action: "stop", label: "停止冷却风机" },
-  ],
-  comp: [
-    { action: "connect", label: "投入无功补偿" },
-    { action: "disconnect", label: "切除无功补偿" },
-  ],
+/* 面向人类阅读的监控交互翻译辅助 */
+const BUSINESS_TYPE_ZH = {
+  sampling: "采样数据",
+  status: "状态量测",
+  sync: "对时同步",
+  command: "控制命令",
+  protection: "保护动作",
+  feedback: "执行反馈",
 };
 
-/* 更新操作表单的目标设备与动作下拉列表 */
-function updateOperationForm(deviceId) {
-  const targetInput = $("#op-target");
-  const actionSelect = $("#op-action-select");
-  const paramGroup = $("#op-param-group");
-  const submitBtn = $("#btn-submit-op");
+const ACTION_ZH = {
+  close: "合闸",
+  open: "分闸",
+  trip: "跳闸",
+  set_tap: "调节分接",
+  start: "启动",
+  stop: "停止",
+  connect: "投入",
+  disconnect: "切除",
+  business_compensation: "油温补偿",
+};
 
-  if (!targetInput || !actionSelect || !submitBtn) return;
+const STATUS_ZH = {
+  dispatched: "已下发",
+  rejected: "已拒绝",
+  accepted: "已受理",
+  completed: "已完成",
+  failed: "已失败",
+  planned: "已计划",
+  executing: "执行中",
+  succeeded: "已成功",
+  suspected: "疑似",
+  normal: "正常",
+  anomaly: "异常",
+};
 
-  const caps = DEVICE_CAPABILITY_MAP[deviceId];
-  const devName = DEVICE_NAME_MAP[deviceId] || deviceId;
-  const fullName = `${devName} ${deviceId}`;
+function deviceName(id) {
+  return DEVICE_NAME_MAP[id] || id || "-";
+}
 
-  // 非受控设备（传感器、采集单元等）：直接显示中文名+代号，禁用动作选项，不加任何冗余括号后缀
-  if (!caps || caps.length === 0) {
-    targetInput.value = fullName;
-    targetInput.dataset.realId = "";
-    actionSelect.innerHTML = `<option value="">无可执行指令</option>`;
-    actionSelect.disabled = true;
-    paramGroup.style.display = "none";
-    submitBtn.disabled = true;
+function zhBusiness(type) {
+  return BUSINESS_TYPE_ZH[type] || type || "其他";
+}
+
+function zhAction(action) {
+  return ACTION_ZH[action] || action || "-";
+}
+
+function zhStatus(status) {
+  return STATUS_ZH[status] || status || "-";
+}
+
+function fmtValue(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value ?? "-");
+  return n.toFixed(digits);
+}
+
+function extractSample(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const sample = payload.sample || payload;
+  if (sample && typeof sample === "object" && sample.samples && Object.keys(sample.samples).length) {
+    return sample;
+  }
+  return null;
+}
+
+function renderSample(sample) {
+  if (!sample || !sample.samples) return "";
+  const samples = sample.samples || {};
+  const units = sample.units || {};
+  const parts = [];
+  if ("ct_current" in samples) parts.push(`线路电流 ${fmtValue(samples.ct_current)} ${units.ct_current || "A"}`);
+  if ("vt_voltage" in samples) parts.push(`母线电压 ${fmtValue(samples.vt_voltage)} ${units.vt_voltage || "kV"}`);
+  if ("oil_temp" in samples) parts.push(`油温 ${fmtValue(samples.oil_temp, 1)} ${units.oil_temp === "C" ? "℃" : (units.oil_temp || "℃")}`);
+  if (parts.length === 0) {
+    return Object.entries(samples).map(([k, v]) => `${esc(k)} ${fmtValue(v)}`).join(" · ");
+  }
+  return parts.join(" · ");
+}
+
+function monitorRow(timeUs, badge, text) {
+  return `
+        <div class="monitor-row">
+          <span class="monitor-time">${formatUs(timeUs)}</span>
+          <span class="monitor-type">${esc(badge)}</span>
+          <span class="monitor-text">${text}</span>
+        </div>`;
+}
+
+/* 设备控制面板：能力描述由后端下发，前端只负责渲染 */
+async function loadDeviceControls(deviceId) {
+  const panel = $("#device-control-panel");
+  if (!panel) return;
+  if (!state.runId || !deviceId) {
+    panel.innerHTML = '<div class="device-control-empty">请在拓扑中点选设备</div>';
+    return;
+  }
+  panel.innerHTML = '<div class="device-control-empty">正在读取设备控制项…</div>';
+  const payload = await api("GET", `/api/runs/${state.runId}/devices/${deviceId}/controls`);
+  if (payload.error) {
+    panel.innerHTML = `<div class="device-control-empty">读取失败：${esc(payload.error)}</div>`;
+    return;
+  }
+  renderDeviceControlPanel(payload, deviceId);
+}
+
+function renderDeviceControlPanel(payload, deviceId) {
+  const panel = $("#device-control-panel");
+  if (!panel) return;
+  const controls = payload.controls || [];
+
+  if (!controls.length) {
+    panel.innerHTML = '<div class="device-control-empty">该设备无可控项，仅支持观测</div>';
     return;
   }
 
-  targetInput.value = fullName;
-  targetInput.dataset.realId = deviceId;
-  actionSelect.innerHTML = caps.map((c) => `<option value="${c.action}">${c.label}</option>`).join("");
-  actionSelect.disabled = false;
-  submitBtn.disabled = false;
+  panel.innerHTML = controls.map((control) => {
+    if (control.kind === "parameter") return renderParameterControl(control, deviceId);
+    if (control.kind === "command") return renderCommandControl(control, deviceId);
+    return "";
+  }).join("");
 
-  const checkParamNeed = () => {
-    const selectedAction = actionSelect.value;
-    const curCap = caps.find((c) => c.action === selectedAction);
-    if (curCap && curCap.needParam === "tap_position") {
-      paramGroup.style.display = "flex";
-      $("#op-param-label").textContent = "设定目标分接档位 (1-9档)";
-    } else {
-      paramGroup.style.display = "none";
-    }
-  };
-
-  actionSelect.onchange = checkParamNeed;
-  checkParamNeed();
+  bindControlPanelEvents();
 }
 
-/* 提交业务操作 */
-async function submitOperation(event) {
+function renderParameterControl(control, deviceId) {
+  const value = control.value != null ? control.value : "";
+  const unit = control.unit ? ` <span class="control-unit">${esc(control.unit)}</span>` : "";
+  return `
+    <form class="operation-form device-control-form" data-control-type="parameter" data-device-id="${esc(deviceId)}">
+      <div class="form-group">
+        <label>${esc(control.label || control.key)}</label>
+        <div class="input-with-unit">
+          <input type="number" min="${control.input?.min ?? 0}" step="${control.input?.step ?? 1}" value="${esc(value)}" data-control-key="${esc(control.key)}">
+          ${unit}
+        </div>
+      </div>
+      <button class="btn btn-action btn-block" type="submit">应用</button>
+    </form>`;
+}
+
+function renderCommandControl(control, deviceId) {
+  const params = control.params || [];
+  const paramFields = params.map((p) => {
+    const value = p.value != null ? p.value : "";
+    return `
+      <div class="form-group">
+        <label>${esc(p.label || p.key)}</label>
+        <input type="number" min="${p.input?.min ?? 0}" max="${p.input?.max ?? ""}" step="${p.input?.step ?? 1}" value="${esc(value)}" data-param-key="${esc(p.key)}">
+      </div>`;
+  }).join("");
+
+  return `
+    <form class="operation-form device-control-form" data-control-type="command" data-device-id="${esc(deviceId)}" data-action="${esc(control.action)}">
+      ${paramFields}
+      <button class="btn btn-action btn-block" type="submit">${esc(control.label)}</button>
+    </form>`;
+}
+
+function bindControlPanelEvents() {
+  document.querySelectorAll(".device-control-form").forEach((form) => {
+    form.addEventListener("submit", submitDeviceControl);
+  });
+}
+
+async function submitDeviceControl(event) {
   event.preventDefault();
   if (!state.runId) return;
-  const targetInput = $("#op-target");
-  const target = targetInput ? targetInput.dataset.realId : "";
-  const actionSelect = $("#op-action-select");
-  const action = actionSelect ? actionSelect.value : "";
-  if (!target || !action) return;
+  const form = event.currentTarget;
+  const deviceId = form.dataset.deviceId;
+  const controlType = form.dataset.controlType;
 
-  const opPayload = {
-    request_id: `op-${Date.now()}`,
-    target_asset_id: target,
-    action_type: action,
-  };
-
-  if (action === "set_tap") {
-    const paramVal = parseInt($("#op-param-val").value || "5", 10);
-    opPayload.parameters = { tap_position: paramVal };
+  if (controlType === "parameter") {
+    const input = form.querySelector("[data-control-key]");
+    const key = input ? input.dataset.controlKey : "";
+    const value = parseFloat(input ? input.value : "");
+    if (!key || Number.isNaN(value)) {
+      setStatus("请输入有效参数值", true);
+      return;
+    }
+    const payload = await api("POST", `/api/runs/${state.runId}/devices/${deviceId}/parameters`, { key, value });
+    if (payload.error) {
+      setStatus(`参数设置失败: ${payload.error}`, true);
+    } else {
+      setStatus(`已更新 ${deviceId} 参数 ${key}: ${value}`);
+    }
+    await refreshViews();
+    await loadDeviceControls(deviceId);
+    return;
   }
 
-  const payload = await api("POST", `/api/runs/${state.runId}/operations`, opPayload);
-  if (payload.error) {
-    setStatus(`下发失败: ${payload.error}`, true);
-  } else {
-    setStatus(`已下发指令: ${action}@${target} (${payload.status || "ok"})`);
+  if (controlType === "command") {
+    const action = form.dataset.action;
+    const params = {};
+    form.querySelectorAll("[data-param-key]").forEach((input) => {
+      const key = input.dataset.paramKey;
+      const raw = input.value;
+      const num = Number(raw);
+      params[key] = Number.isFinite(num) ? num : raw;
+    });
+
+    const opPayload = {
+      request_id: `op-${Date.now()}`,
+      target_asset_id: deviceId,
+      action_type: action,
+    };
+    if (Object.keys(params).length) opPayload.parameters = params;
+
+    const payload = await api("POST", `/api/runs/${state.runId}/operations`, opPayload);
+    if (payload.error) {
+      setStatus(`下发失败: ${payload.error}`, true);
+    } else {
+      setStatus(`已下发指令: ${action}@${deviceId} (${payload.status || "ok"})`);
+    }
+    await refreshViews();
+    await loadDeviceControls(deviceId);
   }
-  await refreshViews();
 }
 
-/* 回放定位 */
+
 async function seekReplay() {
   if (!state.runId) return;
   const timeUs = $("#replay-time").value || "0";
@@ -288,40 +421,22 @@ async function refreshViews() {
     showTopoView();
     state.systemData = data;
     updateMetricsRibbon(data);
-    updateEnvironmentBar(data);
     renderTopology(data);
     updatePacketFlow(data);
     updateAlertFeed(data);
-    if (state.selectedDeviceId) {
-      inspectDevice(state.selectedDeviceId, false);
-    }
+    updateMonitorPanel(data);
   } else {
     showSubView();
     renderOtherView(state.currentView, data);
-    // 异步拉取 system 数据仅用于更新顶部统计条与全站电压电流，绝不触发拓扑重绘显示
+    // 异步拉取 system 数据仅用于更新顶部统计条与右侧监控面板
     api("GET", `/api/runs/${state.runId}/views?view=system`).then((res) => {
       if (res.data) {
         state.systemData = res.data;
         updateMetricsRibbon(res.data);
-        updateEnvironmentBar(res.data);
+        updateMonitorPanel(res.data);
       }
     });
   }
-}
-
-/* 更新全站环境指标条 */
-function updateEnvironmentBar(data) {
-  const env = data.environment || {};
-  const busV = env.bus_voltage_kv != null ? env.bus_voltage_kv.toFixed(2) : "10.00";
-  const lineI = env.line_current_a != null ? env.line_current_a.toFixed(2) : "0.00";
-  const inFlight = (data.in_flight_messages || []).length;
-
-  const vElem = $("#env-bus-v");
-  const iElem = $("#env-line-i");
-  const fElem = $("#env-in-flight");
-  if (vElem) vElem.textContent = busV;
-  if (iElem) iElem.textContent = lineI;
-  if (fElem) fElem.textContent = inFlight;
 }
 
 /* 更新顶部态势指标条 */
@@ -353,43 +468,89 @@ function updateMetricsRibbon(data) {
 }
 
 /* 更新右下角事件告警流 */
+function zhSeverity(severity) {
+  return { low: "低", medium: "中", high: "高", critical: "严重" }[severity] || severity || "-";
+}
+
+function zhAttackBehavior(behavior) {
+  if (!behavior) return "疑似攻击";
+  const map = {
+    business_anomaly: "业务量异常",
+    anomalous_traffic: "流量异常",
+    "coordinated:business_anomaly": "协同攻击",
+  };
+  if (map[behavior]) return map[behavior];
+  return behavior.startsWith("coordinated:") ? "协同攻击" : behavior;
+}
+
+function parseEventKey(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (s.startsWith("[") && s.includes(",")) {
+    return s.replace(/[\[\]"'\s]/g, "").split(",").filter(Boolean);
+  }
+  return [];
+}
+
+function providerLabel(v) {
+  if (Array.isArray(v)) return providerLabel(v[0]);
+  const s = String(v == null ? "" : v).trim();
+  if (!s) return "监测通道";
+  if (s === "business" || s === "p-business") return "业务监测";
+  const parts = parseEventKey(s);
+  if (parts.length) {
+    if (parts[0] === "business" || parts[0] === "p-business") return "业务监测";
+    return parts[0] || "监测通道";
+  }
+  return s;
+}
+
+function lateEventLabel(v) {
+  const s = String(v == null ? "" : v).trim();
+  const parts = parseEventKey(s);
+  if (parts.length >= 2) {
+    if (parts[0] === "business" || parts[0] === "p-business") return "业务监测事件 " + parts[1];
+    return (parts[0] || "事件") + " " + parts[1];
+  }
+  return providerLabel(v);
+}
+
 function updateAlertFeed(data) {
   const feed = $("#alert-feed");
   const items = [];
 
   (data.recognition || []).forEach((r) => {
     items.push({
-      time: r.timestamp_us || 0,
+      time: r.time_us ?? r.timestamp_us ?? data.time_us ?? 0,
       type: "danger",
-      title: `[威胁告警] ${esc(r.detected_type || "异常")}`,
-      desc: `目标: ${esc((r.target_asset_ids || []).join(","))} | 置信度: ${r.confidence ?? "-"}`,
+      title: `[威胁告警] ${esc(zhAttackBehavior(r.attack_behavior))}`,
+      desc: `目标: ${esc((r.target_asset_ids || []).map(deviceName).join("、") || "-")} · 置信度: ${r.confidence ?? "-"} · 严重度: ${esc(zhSeverity(r.severity))}`,
     });
   });
 
   (data.defense || []).forEach((d) => {
     items.push({
-      time: d.timestamp_us || 0,
+      time: d.time_us ?? d.timestamp_us ?? data.time_us ?? 0,
       type: "normal",
-      title: `[防御执行] ${esc(d.strategy_id || "策略响应")}`,
-      desc: `目标: ${esc(d.target_asset_id)} | 动作: ${esc(d.action)}`,
+      title: `[防御执行] ${esc(zhAction(d.action_type))}`,
+      desc: `目标: ${esc((d.target_asset_ids || []).map(deviceName).join("、") || "-")} · 状态: ${esc(zhStatus(d.status))}`,
     });
   });
 
   const obs = data.observations || {};
   (obs.missing || []).forEach((m) => {
     items.push({
-      time: m.window_end_us || data.time_us || 0,
+      time: m.time_us ?? m.window_end_us ?? data.time_us ?? 0,
       type: "warning",
-      title: `[数据缺失] ${esc(m.provider_id || "监测通道")}`,
-      desc: `源未按时递交证据数据`,
+      title: `[数据缺失] ${esc(providerLabel(m.provider_id))}`,
+      desc: `监测源未按时递交数据`,
     });
   });
   (obs.late || []).forEach((l) => {
     items.push({
-      time: l.event?.timestamp_us || data.time_us || 0,
+      time: l.scene_time_us ?? l.time_us ?? data.time_us ?? 0,
       type: "warning",
-      title: `[数据迟到] ${esc(l.event?.provider_id || "监测通道")}`,
-      desc: `时延超出允许时窗`,
+      title: `[数据迟到] ${esc(lateEventLabel(l.event_key || l.provider_id || l.source_type))}`,
+      desc: `该事件超出允许观测时窗，未在时窗内入窗`,
     });
   });
 
@@ -477,13 +638,18 @@ function getDeviceDynamicText(devId, mgmt, env) {
     return "[采集合并]";
   }
   if (devId === "prot") {
-    return "[定值 50A]";
+    const threshold = overview.overcurrent_threshold_a;
+    return threshold != null ? `[定值 ${threshold}A]` : "[定值 -]";
   }
   if (devId === "mc") {
-    return "[远控闭环]";
+    const cmds = (overview.last_commands || []).length;
+    const fb = (overview.last_feedback || []).length;
+    return `[测控 令${cmds} 反${fb}]`;
   }
   if (devId === "station") {
-    return "[SCADA监视]";
+    const rx = (overview.last_received || []).length;
+    const tx = (overview.last_dispatched || []).length;
+    return `[监视 收${rx} 发${tx}]`;
   }
   if (devId === "time_svc") {
     return "[GNSS授时]";
@@ -571,9 +737,8 @@ function renderTopology(data) {
 
       g.innerHTML = `
         <rect width="90" height="48" rx="6"></rect>
-        <text x="45" y="18" text-anchor="middle" class="node-title">${esc(dev.name || id)}</text>
-        <text x="45" y="32" text-anchor="middle" class="node-sub">${esc(id)}</text>
-        <text x="45" y="44" text-anchor="middle" class="node-status-text" id="node-text-${esc(id)}">${esc(dynamicText)}</text>
+        <text x="45" y="22" text-anchor="middle" class="node-title">${esc(dev.name || id)}</text>
+        <text x="45" y="42" text-anchor="middle" class="node-status-text" id="node-text-${esc(id)}">${esc(dynamicText)}</text>
       `;
 
       g.addEventListener("click", () => {
@@ -626,6 +791,7 @@ function animateParticles(now) {
     let frag = document.createDocumentFragment();
 
     particleMap.forEach((p, id) => {
+      if (state.particleFilter !== "all" && p.category !== state.particleFilter) return;
       const elapsed = now - p.birthTime;
       const progress = Math.min(elapsed / p.duration, 1.0);
 
@@ -653,7 +819,7 @@ function animateParticles(now) {
       circle.setAttribute("cx", curX.toFixed(1));
       circle.setAttribute("cy", curY.toFixed(1));
       circle.setAttribute("r", "4.5");
-      circle.setAttribute("class", `msg-particle ${p.businessType}`);
+      circle.setAttribute("class", `msg-particle ${p.category}`);
       circle.setAttribute("opacity", opacity.toFixed(2));
       frag.appendChild(circle);
     });
@@ -706,7 +872,8 @@ function updatePacketFlow(data) {
       y1: src.y + 24,
       x2: dst.x + 45,
       y2: dst.y + 24,
-      businessType: msg.business_type || "sampling",
+      businessType: msg.business_type || "unknown",
+      category: particleCategory(msg.business_type || "unknown"),
       birthTime: now,
       duration: 1100, // 约1.1秒平滑穿越
       isDead: false,
@@ -721,72 +888,108 @@ function updatePacketFlow(data) {
   });
 }
 
-/* 检查并展示选中的设备详细信息 */
+/* 固定展示站端监控系统与测控装置的实时交互信息 */
+function updateMonitorPanel(data) {
+  const panel = $("#monitor-panel");
+  if (!panel) return;
+  const mgmt = data.management || {};
+  const station = mgmt.station || {};
+  const mc = mgmt.mc || {};
+  const stationOverview = station.overview || {};
+  const mcOverview = mc.overview || {};
+
+  let html = "";
+  html += '<div class="monitor-device-title">站端监控系统</div>';
+  html += renderStationMonitor(stationOverview);
+  html += '<div class="monitor-device-title" style="margin-top:10px;">测控装置</div>';
+  html += renderMcMonitor(mcOverview);
+
+  if (!html.includes("monitor-row")) {
+    html = '<div class="alert-empty">暂无监控交互数据，启动运行后自动刷新</div>';
+  }
+  panel.innerHTML = html;
+}
+
+function renderStationMonitor(overview) {
+  if (!overview || Object.keys(overview).length === 0) {
+    return '<div class="monitor-empty">等待站端监控系统接收报文…</div>';
+  }
+
+  let html = "";
+  const received = Array.isArray(overview.last_received) ? overview.last_received : [];
+  const dispatched = Array.isArray(overview.last_dispatched) ? overview.last_dispatched : [];
+
+  if (received.length) {
+    html += '<div class="monitor-log-title">最近接收</div>';
+    received.slice(-4).reverse().forEach((r) => {
+      const typeZh = zhBusiness(r.type);
+      const fromZh = deviceName(r.from);
+      let text = `来自 <strong>${esc(fromZh)}</strong> · ${esc(typeZh)}`;
+      const sample = extractSample(r.payload);
+      if (sample) text += `<span class="monitor-sample">${renderSample(sample)}</span>`;
+      html += monitorRow(r.time_us, typeZh, text);
+    });
+  }
+
+  if (dispatched.length) {
+    html += '<div class="monitor-log-title">最近下发</div>';
+    dispatched.slice(-4).reverse().forEach((d) => {
+      const text = `目标 <strong>${esc(deviceName(d.target))}</strong> · ${esc(zhAction(d.action))} · ${esc(zhStatus(d.status))}${d.reason ? ` · 原因：${esc(d.reason)}` : ""}`;
+      html += monitorRow(d.time_us, zhStatus(d.status), text);
+    });
+  }
+
+  if (!received.length && !dispatched.length) {
+    html += '<div class="monitor-empty">站端监控系统暂无接收/下发记录</div>';
+  }
+  return html;
+}
+
+function renderMcMonitor(overview) {
+  if (!overview || Object.keys(overview).length === 0) {
+    return '<div class="monitor-empty">等待测控装置形成量测与控制记录…</div>';
+  }
+
+  let html = "";
+  const commands = Array.isArray(overview.last_commands) ? overview.last_commands : [];
+  const feedback = Array.isArray(overview.last_feedback) ? overview.last_feedback : [];
+  const latest = extractSample(overview.latest_sample);
+
+  if (latest) {
+    html += '<div class="monitor-log-title">最新采样</div>';
+    html += monitorRow(latest.sample_time_us || 0, "量测", renderSample(latest));
+  }
+
+  if (commands.length) {
+    html += '<div class="monitor-log-title">命令执行</div>';
+    commands.slice(-4).reverse().forEach((c) => {
+      const text = `${esc(zhAction(c.action))} · ${esc(zhStatus(c.status))}${c.reason ? ` · 原因：${esc(c.reason)}` : ""}${c.target ? ` · 目标：${esc(deviceName(c.target))}` : ""}`;
+      html += monitorRow(c.time_us, zhStatus(c.status), text);
+    });
+  }
+
+  if (feedback.length) {
+    html += '<div class="monitor-log-title">执行反馈</div>';
+    feedback.slice(-4).reverse().forEach((f) => {
+      const payload = f.payload || {};
+      const status = payload.status || "已反馈";
+      const reason = payload.reason || "";
+      const text = `${esc(zhStatus(status))}${reason ? ` · ${esc(reason)}` : ""}`;
+      html += monitorRow(f.time_us, "反馈", text);
+    });
+  }
+
+  if (!html) {
+    html += '<div class="monitor-empty">测控装置暂无采样/命令/反馈记录</div>';
+  }
+  return html;
+}
+
+/* 选中设备：只驱动左侧控制面板，不再在右侧渲染设备详情 */
 function inspectDevice(deviceId, fillTarget = false) {
   state.selectedDeviceId = deviceId;
-  const inspector = $("#device-inspector");
-  if (!state.systemData) return;
-
-  const topo = state.systemData.topology || {};
-  const dev = (topo.devices || []).find((d) => d.device_id === deviceId);
-  const mgmt = (state.systemData.management || {})[deviceId] || {};
-  const env = state.systemData.environment || {};
-  const devState = mgmt.state || {};
-  const devEffects = mgmt.effects || {};
-
-  if (!dev) {
-    inspector.innerHTML = `<div class="inspector-placeholder">未找到设备 ${esc(deviceId)} 信息</div>`;
-    return;
-  }
-
-  const hasEffects = Object.keys(devEffects).length > 0;
-  let effectsHtml = '<span style="color:#10b981;">无异常作用</span>';
-  if (hasEffects) {
-    effectsHtml = Object.entries(devEffects)
-      .map(([k, v]) => `<div class="effects-badge">⚡ ${esc(k)}: ${JSON.stringify(v)}</div>`)
-      .join("");
-  }
-
-  const mergedState = { ...devState };
-  if (deviceId === "ct_current") mergedState["measured_current_a"] = env.line_current_a ?? 0;
-  if (deviceId === "vt_voltage") mergedState["measured_voltage_kv"] = env.bus_voltage_kv ?? 10.0;
-  if (deviceId === "oil_temp") mergedState["oil_temp_c"] = (state.systemData.management["tap"]?.state?.oil_temp_c) ?? 40.0;
-
-  const stateRows = Object.entries(mergedState)
-    .map(
-      ([k, v]) => `
-      <div class="attr-row">
-        <span class="attr-key">${esc(k)}</span>
-        <span class="attr-val">${esc(typeof v === "number" ? v.toFixed(3) : (typeof v === "object" ? JSON.stringify(v) : v))}</span>
-      </div>`
-    )
-    .join("");
-
-  inspector.innerHTML = `
-    <div class="device-card-header">
-      <div class="device-card-title">${esc(dev.name || dev.device_id)}</div>
-      <div class="device-card-id">${esc(dev.device_id)} · ${esc(dev.device_type)} (${esc(dev.layer)})</div>
-    </div>
-    <div class="device-attr-list">
-      <div class="attr-row">
-        <span class="attr-key">所属分层</span>
-        <span class="attr-val">${esc(dev.layer)}</span>
-      </div>
-      <div class="attr-row">
-        <span class="attr-key">设备类型</span>
-        <span class="attr-val">${esc(dev.device_type)}</span>
-      </div>
-      <div class="attr-row">
-        <span class="attr-key">受影响状态</span>
-        <span class="attr-val">${effectsHtml}</span>
-      </div>
-      <div class="section-title" style="margin-top:8px;">实时物理量与状态参数</div>
-      ${stateRows || '<div style="color:#64748b;font-size:11px;">无直接物理状态量</div>'}
-    </div>
-  `;
-
   if (fillTarget) {
-    updateOperationForm(deviceId);
+    loadDeviceControls(deviceId);
   }
 }
 
@@ -848,62 +1051,267 @@ function showSubView() {
   $("#sub-view-container").style.display = "block";
 }
 
+function fmtPct(value, digits = 1) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return (Number(value) * 100).toFixed(digits) + "%";
+}
+
+function firstScalar(value) {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function severityClass(severity) {
+  return { critical: "danger", high: "danger", medium: "warning", low: "normal" }[severity] || "normal";
+}
+
+function emptyState(text) {
+  return `<div class="sub-empty">${esc(text)}</div>`;
+}
+
 function renderSnapshot(data) {
   const content = $("#view-content");
   const snapshots = data.snapshots || {};
+  const entries = Object.entries(snapshots);
+  let body = "";
+
+  if (entries.length === 0) {
+    body = emptyState("该时刻尚无设备状态快照，请推进仿真后再回放");
+  } else {
+    body = '<div class="sub-card-list">' + entries.map(([id, snap]) => {
+      const s = snap?.state || {};
+      const effects = snap?.effects || {};
+      const parts = [];
+      Object.entries(s).forEach(([k, v]) => {
+        if (v === null || v === undefined) return;
+        if (typeof v === "object") {
+          Object.entries(v).forEach(([kk, vv]) => parts.push(`${esc(k)}.${esc(kk)}: ${esc(String(vv))}`));
+        } else {
+          parts.push(`${esc(k)}: ${esc(String(v))}`);
+        }
+      });
+      const effectText = Object.keys(effects).length ? ` <span class="effects-badge">受影响 ${esc(Object.keys(effects).join("、"))}</span>` : "";
+      return `
+        <div class="sub-card">
+          <div class="sub-card-head"><span class="sub-card-title">${esc(deviceName(id))}</span><span class="sub-card-id">${esc(id)}</span></div>
+          <div class="sub-card-body">${parts.length ? parts.join(" · ") : "稳态无变化"}${effectText}</div>
+        </div>`;
+    }).join("") + "</div>";
+  }
+
   content.innerHTML = `
-    <h3 style="color:#38bdf8;margin-bottom:10px;">时刻历史快照回放</h3>
-    <pre>${esc(JSON.stringify(snapshots, null, 2))}</pre>`;
+    <div class="sub-view-header">
+      <h3>时刻历史快照回放</h3>
+      <span class="sub-view-meta">仿真时刻 ${formatUs(data.time_us ?? 0)}</span>
+    </div>${body}`;
+}
+
+function renderTimeline(data) {
+  const content = $("#view-content");
+  const attacks = data.attacks || [];
+  const submissions = data.attack_submissions || [];
+  const recognitions = data.recognitions || data.recognition || [];
+  const defenses = data.defenses || data.defense || [];
+  const rows = [];
+
+  const push = (list, icon, title, color, renderer) => {
+    if (!list.length) {
+      rows.push(`<div class="sub-section"><div class="sub-section-title" style="color:${color}">${icon} ${title} (0)</div><div class="sub-empty">暂无记录</div></div>`);
+      return;
+    }
+    rows.push(`
+      <div class="sub-section">
+        <div class="sub-section-title" style="color:${color}">${icon} ${title} (${list.length})</div>
+        <div class="sub-card-list">${list.map(renderer).join("")}</div>
+      </div>`);
+  };
+
+  push(attacks, "🎯", "攻击计划队列", "#f59e0b", (a) => `
+    <div class="sub-card">
+      <div class="sub-card-head"><span class="sub-card-title">${esc(a.attack_type || "未知类型")}</span><span class="sub-card-time">${formatUs(a.time_us)}</span></div>
+      <div class="sub-card-body">目标 ${esc((a.target_asset_ids || []).map(deviceName).join("、") || "-")} · 起 ${formatUs(a.start_time_us)} · 止 ${formatUs(a.end_time_us)}</div>
+    </div>`);
+
+  push(submissions, "⚡", "攻击生效提交", "#ef4444", (s) => `
+    <div class="sub-card">
+      <div class="sub-card-head"><span class="sub-card-title">${esc(s.effect_type || "效应注入")} → ${esc(deviceName(s.target_id))}</span><span class="sub-card-time">${formatUs(s.time_us)}</span></div>
+      <div class="sub-card-body">受理状态 ${esc(zhStatus(s.status))}${s.reason ? ` · ${esc(s.reason)}` : ""}</div>
+    </div>`);
+
+  push(recognitions, "🔍", "智能攻击识别", "#06b6d4", (r) => `
+    <div class="sub-card">
+      <div class="sub-card-head"><span class="sub-card-title">${esc(zhAttackBehavior(r.attack_behavior))} · ${esc(zhSeverity(r.severity))}</span><span class="sub-card-time">${formatUs(r.time_us)}</span></div>
+      <div class="sub-card-body">目标 ${esc((r.target_asset_ids || []).map(deviceName).join("、") || "-")} · 置信度 ${r.confidence ?? "-"} · 方法 ${esc(r.recognition_details?.method || "-")}</div>
+    </div>`);
+
+  push(defenses, "🛡", "主动防御动作", "#10b981", (d) => `
+    <div class="sub-card">
+      <div class="sub-card-head"><span class="sub-card-title">${esc(zhAction(d.action_type))}</span><span class="sub-card-time">${formatUs(d.time_us)}</span></div>
+      <div class="sub-card-body">目标 ${esc((d.target_asset_ids || []).map(deviceName).join("、") || "-")} · 状态 ${esc(zhStatus(d.status))}${d.result?.note ? ` · ${esc(d.result.note)}` : ""}</div>
+    </div>`);
+
+  content.innerHTML = `
+    <div class="sub-view-header">
+      <h3>⏳ 攻防全时序过程推进</h3>
+      <span class="sub-view-meta">共 ${attacks.length + submissions.length + recognitions.length + defenses.length} 条过程记录</span>
+    </div>${rows.join("")}`;
+}
+
+function renderObservations(data) {
+  const content = $("#view-content");
+  let obs = data.observations || {};
+  // 历史回放返回的是证据数组，活动运行返回 {events, missing, late} 对象。
+  let events = [];
+  let missing = [];
+  let late = [];
+  if (Array.isArray(obs)) {
+    events = obs;
+    obs = {};
+  } else {
+    events = Array.isArray(obs.events) ? obs.events : [];
+    missing = Array.isArray(obs.missing) ? obs.missing : [];
+    late = Array.isArray(obs.late) ? obs.late : [];
+  }
+
+  let body = "";
+  if (!events.length) {
+    body += emptyState("当前监测时窗内暂无观测事件");
+  } else {
+    body += '<div class="sub-section"><div class="sub-section-title" style="color:#38bdf8">📡 观测事件 (' + events.length + ')</div><div class="sub-card-list">' + events.slice(-30).reverse().map((e) => {
+      const raw = e.raw || {};
+      const data = raw.data || {};
+      const metricName = data.metric_name || raw.metadata?.metric || "";
+      const metricValue = data.value != null ? `${data.value} ${data.unit || ""}` : "";
+      const asset = data.asset_id || (raw.related_asset_ids || [])[0];
+      return `
+        <div class="sub-card">
+          <div class="sub-card-head"><span class="sub-card-title">${esc(providerLabel(e.provider_id))} · ${esc(e.source_type || "观测")}</span><span class="sub-card-time">${formatUs(e.time_us ?? e.received_time_us)}</span></div>
+          <div class="sub-card-body">状态 ${esc(zhStatus(raw.status))} · 置信度 ${raw.confidence ?? "-"}${metricName ? ` · ${esc(metricName)} ${esc(metricValue)}` : ""}${asset ? ` · 目标 ${esc(deviceName(asset))}` : ""}</div>
+        </div>`;
+    }).join("") + '</div></div>';
+  }
+
+  if (missing.length) {
+    body += '<div class="sub-section"><div class="sub-section-title" style="color:#f59e0b">⚠ 缺失监测源 (' + missing.length + ')</div><div class="sub-card-list">' + missing.slice(-20).reverse().map((m) => `
+      <div class="sub-card">
+        <div class="sub-card-body">${esc(providerLabel(m.provider_id))} · ${esc(m.reason || "no_data_in_window")}</div>
+      </div>`).join("") + '</div></div>';
+  }
+
+  if (late.length) {
+    body += '<div class="sub-section"><div class="sub-section-title" style="color:#f59e0b">⏱ 迟到事件 (' + late.length + ')</div><div class="sub-card-list">' + late.slice(-20).reverse().map((l) => `
+      <div class="sub-card">
+        <div class="sub-card-body">${esc(lateEventLabel(l.event_key || l.provider_id || l.source_type))}</div>
+      </div>`).join("") + '</div></div>';
+  }
+
+  if (!body) body = emptyState("暂无全域监测数据");
+  content.innerHTML = `
+    <div class="sub-view-header">
+      <h3>📡 五类全域监测</h3>
+      <span class="sub-view-meta">事件 ${events.length} · 缺失 ${missing.length} · 迟到 ${late.length}</span>
+    </div>${body}`;
+}
+
+function renderRecognition(data) {
+  const content = $("#view-content");
+  const list = data.recognition || data.recognitions || [];
+  let body;
+  if (!list.length) {
+    body = emptyState("识别引擎尚未产生告警记录");
+  } else {
+    body = '<div class="sub-card-list">' + list.slice(-30).reverse().map((r) => `
+      <div class="sub-card ${severityClass(r.severity)}">
+        <div class="sub-card-head"><span class="sub-card-title">${esc(zhAttackBehavior(r.attack_behavior))} · ${esc(zhSeverity(r.severity))}</span><span class="sub-card-time">${formatUs(r.time_us)}</span></div>
+        <div class="sub-card-body">目标 ${esc((r.target_asset_ids || []).map(deviceName).join("、") || "-")} · 置信度 ${r.confidence ?? "-"} · 方法 ${esc(r.recognition_details?.method || "-")}</div>
+      </div>`).join("") + "</div>";
+  }
+  content.innerHTML = `
+    <div class="sub-view-header">
+      <h3>🔍 智能攻击识别</h3>
+      <span class="sub-view-meta">累计告警 ${list.length} 条</span>
+    </div>${body}`;
+}
+
+function renderDefense(data) {
+  const content = $("#view-content");
+  const list = data.defense || data.defenses || [];
+  let body;
+  if (!list.length) {
+    body = emptyState("防御引擎尚未执行处置动作");
+  } else {
+    body = '<div class="sub-card-list">' + list.slice(-30).reverse().map((d) => `
+      <div class="sub-card">
+        <div class="sub-card-head"><span class="sub-card-title">${esc(zhAction(d.action_type))}</span><span class="sub-card-time">${formatUs(d.time_us)}</span></div>
+        <div class="sub-card-body">目标 ${esc((d.target_asset_ids || []).map(deviceName).join("、") || "-")} · 状态 ${esc(zhStatus(d.status))}${d.result?.note ? ` · ${esc(d.result.note)}` : ""}</div>
+      </div>`).join("") + "</div>";
+  }
+  content.innerHTML = `
+    <div class="sub-view-header">
+      <h3>🛡 主动安全防御</h3>
+      <span class="sub-view-meta">累计动作 ${list.length} 条</span>
+    </div>${body}`;
+}
+
+function renderEvaluation(data) {
+  const content = $("#view-content");
+  const comparison = data.comparison || {};
+  const runs = Array.isArray(data.runs) ? data.runs : [];
+  const row = runs[0] || {};
+  const bm = row.business_metrics || {};
+  const rm = row.recognition_metrics || {};
+  const dm = row.defense_metrics || {};
+
+  const impact = firstScalar(comparison.impact_reduction_rate);
+  const score = firstScalar(comparison.overall_score);
+  const detection = firstScalar(comparison.detection_result);
+  const delay = rm.detection_delay_ms ?? row.detection_delay_ms;
+  const actionSuccess = dm.action_success ?? row.action_success;
+  const maxDeviation = bm.maximum_deviation ?? row.maximum_deviation;
+
+  const reason = data.reason ? `<div class="sub-empty">${esc(data.reason)}</div>` : "";
+  const cards = [];
+
+  if (impact != null) cards.push({ label: "攻击影响降低率", value: fmtPct(impact), tone: "ok" });
+  else if (bm.evaluable === false) cards.push({ label: "攻击影响降低率", value: "无攻击基准，暂无可比指标", tone: "muted" });
+
+  if (score != null) cards.push({ label: "综合效能得分", value: Number(score).toFixed(2), tone: "ok" });
+  if (detection != null) cards.push({ label: "识别与检出判定", value: esc(detection), tone: "warn" });
+  if (delay != null) cards.push({ label: "识别响应时延", value: `${esc(delay)} ms`, tone: "warn" });
+  if (actionSuccess != null) cards.push({ label: "防御动作成功率", value: fmtPct(actionSuccess), tone: "ok" });
+  if (maxDeviation != null) cards.push({ label: "业务最大偏离", value: esc(String(maxDeviation)), tone: "muted" });
+
+  const body = cards.length
+    ? '<div class="sub-card-list">' + cards.map((c) => `
+      <div class="sub-card">
+        <div class="sub-card-head"><span class="sub-card-title">${esc(c.label)}</span></div>
+        <div class="sub-card-value ${c.tone}">${c.value}</div>
+      </div>`).join("") + "</div>"
+    : (reason || emptyState("暂无评估结果，请完成一次完整运行"));
+
+  content.innerHTML = `
+    <div class="sub-view-header">
+      <h3>📊 课题攻防效能综合评估</h3>
+      <span class="sub-view-meta">单场景评估结论</span>
+    </div>${body}`;
 }
 
 function renderOtherView(view, data) {
   const content = $("#view-content");
+  if (!content) return;
 
-  if (view === "timeline") {
-    const attacks = data.attacks || [];
-    const submissions = data.attack_submissions || [];
-    const recognitions = data.recognitions || data.recognition || [];
-    const defenses = data.defenses || data.defense || [];
-    content.innerHTML = `
-      <h3 style="color:#38bdf8;margin-bottom:12px;">⏳ 攻防全时序过程推进</h3>
-      <h4 style="color:#f59e0b;margin:10px 0 6px;">攻击计划队列 (${attacks.length})</h4>
-      <pre>${esc(JSON.stringify(attacks, null, 2))}</pre>
-      <h4 style="color:#ef4444;margin:10px 0 6px;">攻击生效提交 (${submissions.length})</h4>
-      <pre>${esc(JSON.stringify(submissions, null, 2))}</pre>
-      <h4 style="color:#06b6d4;margin:10px 0 6px;">智能攻击识别记录 (${recognitions.length})</h4>
-      <pre>${esc(JSON.stringify(recognitions, null, 2))}</pre>
-      <h4 style="color:#10b981;margin:10px 0 6px;">主动防御动作记录 (${defenses.length})</h4>
-      <pre>${esc(JSON.stringify(defenses, null, 2))}</pre>
-    `;
-    return;
-  }
-
-  if (view === "evaluation") {
-    const comparison = data.comparison || {};
-    content.innerHTML = `
-      <h3 style="color:#38bdf8;margin-bottom:12px;">📊 课题攻防效能综合评估对比</h3>
-      <div style="background:#132238;border:1px solid #1e3a5f;padding:12px;border-radius:6px;margin-bottom:12px;">
-        <div style="font-size:14px;color:#f8fafc;font-weight:600;margin-bottom:6px;">
-          攻击影响降低率 (指标≥90%): <span style="color:#10b981;font-size:18px;">${comparison.impact_reduction_rate != null ? (comparison.impact_reduction_rate * 100).toFixed(2) + "%" : "未完成/无攻击"}</span>
-        </div>
-        <div style="font-size:14px;color:#f8fafc;font-weight:600;margin-bottom:6px;">
-          综合效能得分: <span style="color:#38bdf8;font-size:18px;">${comparison.overall_score != null ? comparison.overall_score : "-"}</span>
-        </div>
-        <div style="font-size:14px;color:#f8fafc;font-weight:600;">
-          识别与检出判定: <span style="color:#f59e0b;">${esc(comparison.detection_result ?? "无异常")}</span>
-        </div>
-      </div>
-      <h4 style="color:#94a3b8;margin:8px 0;">原始评估比对数据</h4>
-      <pre>${esc(JSON.stringify(data, null, 2))}</pre>
-    `;
-    return;
-  }
+  if (view === "timeline") return renderTimeline(data);
+  if (view === "observations") return renderObservations(data);
+  if (view === "recognition") return renderRecognition(data);
+  if (view === "defense") return renderDefense(data);
+  if (view === "evaluation") return renderEvaluation(data);
 
   content.innerHTML = `
-    <h3 style="color:#38bdf8;margin-bottom:10px;">${esc(view.toUpperCase())} 视图详情</h3>
-    <pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+    <div class="sub-view-header">
+      <h3>${esc(view.toUpperCase())} 视图</h3>
+    </div>
+    <div class="sub-empty">该视图暂未提供可视化展示</div>`;
 }
-
 function bindEvents() {
   $("#create-run").addEventListener("click", createRun);
 
@@ -918,7 +1326,15 @@ function bindEvents() {
     updateAutoStep(e.target.checked);
   });
 
-  $("#operation-form").addEventListener("submit", submitOperation);
+  const particleFilter = $("#particle-filter");
+  if (particleFilter) {
+    particleFilter.addEventListener("change", (e) => {
+      state.particleFilter = e.target.value;
+      const packetLayer = $("#topo-packets");
+      if (packetLayer) packetLayer.innerHTML = "";
+    });
+  }
+
   $("#seek-replay").addEventListener("click", seekReplay);
 
   document.querySelectorAll(".tab").forEach((tab) => {

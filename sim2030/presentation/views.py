@@ -25,6 +25,51 @@ def _last_truth_snapshot(reader: RunReader) -> Dict[str, Any]:
     return snapshot
 
 
+def _derive_environment(reader: RunReader, fallback: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """从业务报文与设备快照还原环境概览。
+
+    旧记录中 truth 快照不包含环境量，但电流/电压互感器的采样报文足够恢复
+    ``line_current_a`` 与 ``bus_voltage_kv``，其余字段给稳定默认值，保证 UI
+    拓扑动态文本有可读来源。
+    """
+    env = {
+        "bus_voltage_kv": 10.0,
+        "line_current_a": 0.0,
+        "reactive_power_var": 0.0,
+        "ambient_temp_c": 30.0,
+        "cooling_on": False,
+    }
+    if fallback:
+        env.update(fallback)
+
+    for record in reader._iter_stream("business"):
+        business_type = record.get("business_type")
+        payload = record.get("payload") or {}
+        if business_type == "sampling":
+            sensor_id = payload.get("sensor_id") or record.get("sender_id")
+            value = payload.get("value")
+            if not isinstance(value, (int, float)):
+                continue
+            if sensor_id == "ct_current":
+                env["line_current_a"] = float(value)
+            elif sensor_id == "vt_voltage":
+                env["bus_voltage_kv"] = float(value)
+
+    snapshot = _last_truth_snapshot(reader)
+    device_snapshots = snapshot.get("device_snapshots", {})
+    cool = device_snapshots.get("cool", {})
+    if isinstance(cool, dict):
+        state = cool.get("state") or {}
+        if "running" in state:
+            env["cooling_on"] = bool(state.get("running"))
+    return env
+
+
+def _derive_in_flight_messages(reader: RunReader) -> List[Dict[str, Any]]:
+    """旧运行没有独立持久化的在途队列，回放时返回空队列。"""
+    return []
+
+
 def build_system_view(records) -> Dict[str, Any]:
     """整理设备拓扑、内部业务状态及外部观测摘要，标明来源和缺失。"""
     reader = _reader(records)
@@ -37,6 +82,7 @@ def build_system_view(records) -> Dict[str, Any]:
             "device_id": asset_id,
             "device_type": info.get("device_type"),
             "layer": info.get("layer"),
+            "name": info.get("name") or info.get("device_type") or asset_id,
             "state": info.get("state"),
             "effects": info.get("effects"),
         })
@@ -50,6 +96,7 @@ def build_system_view(records) -> Dict[str, Any]:
     for event in events:
         by_source[event.get("source_type", "unknown")] = by_source.get(event.get("source_type", "unknown"), 0) + 1
 
+    environment = snapshot.get("environment") or _derive_environment(reader)
     return {
         "run_id": manifest.get("run_id"),
         "scenario_id": manifest.get("scenario_id"),
@@ -57,6 +104,9 @@ def build_system_view(records) -> Dict[str, Any]:
         "time_us": snapshot.get("time_us", 0),
         "topology": {"devices": devices, "links": manifest.get("links", [])},
         "device_snapshots": device_snapshots,
+        "management": device_snapshots,
+        "environment": environment,
+        "in_flight_messages": _derive_in_flight_messages(reader),
         "observations": {
             "event_count": len(events),
             "by_source": by_source,

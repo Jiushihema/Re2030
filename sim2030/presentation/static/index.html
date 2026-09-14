@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>国家重点研发计划2030 · 感控系统安全态势大屏</title>
-  <link rel="stylesheet" href="/style.css?v=20260910_v12">
+  <link rel="stylesheet" href="/style.css?v=20260914_v5">
 </head>
 <body>
   <!-- 顶部状态栏 -->
@@ -89,24 +89,10 @@
         <button class="btn btn-outline btn-block" id="btn-single-step">单步推演 (+100ms)</button>
       </div>
 
-      <div class="section-title">下发业务操作</div>
-      <form id="operation-form" class="operation-form">
-        <div class="form-group">
-          <label>目标受控设备</label>
-          <input id="op-target" placeholder="请在拓扑中点选受控设备" readonly>
-        </div>
-        <div class="form-group">
-          <label>动作指令</label>
-          <select id="op-action-select" class="form-select" disabled>
-            <option value="">请先在拓扑中选择设备</option>
-          </select>
-        </div>
-        <div class="form-group" id="op-param-group" style="display:none;">
-          <label id="op-param-label">附加参数 (如分接档位)</label>
-          <input id="op-param-val" type="number" min="1" max="9" value="6" placeholder="数值">
-        </div>
-        <button class="btn btn-action btn-block" id="btn-submit-op" type="submit" disabled>下发控制命令</button>
-      </form>
+      <div class="section-title">设备控制面板</div>
+      <div id="device-control-panel" class="device-control-panel">
+        <div class="device-control-empty">请在拓扑中点选设备</div>
+      </div>
 
       <div class="section-title">时刻历史快照回放</div>
       <div class="replay-group">
@@ -133,36 +119,48 @@
 
       <!-- 拓扑主工作区容器 -->
       <div id="topo-container" class="topo-container">
-        <!-- 两行规范化拓扑图例与状态面板 -->
-        <div class="topo-legend">
-          <!-- 第一行：四种链路样式说明 -->
-          <div class="legend-row">
-            <span class="legend-row-label">链路定义:</span>
-            <div class="legend-item" title="站内以太网数字通信总线 (MMS/GOOSE/SV)"><span class="legend-line line-wired"></span> 站内网络总线 (以太网)</div>
-            <div class="legend-item" title="控制接口至一次设备电磁线圈的硬接线控制回路"><span class="legend-line line-hardwire"></span> 接口控制硬接线 (直连)</div>
-            <div class="legend-item" title="一次主干回路高压电气主接线"><span class="legend-line line-elec"></span> 10kV电气主回路 (主干)</div>
-            <div class="legend-item" title="变压器本体热传导至油温计的物理接触测量关系"><span class="legend-line line-physical"></span> 热传导物理耦合 (测温)</div>
-          </div>
-
-          <!-- 第二行：三种节点状态与实时关键全站物理量数据 -->
-          <div class="legend-row" style="margin-top: 5px;">
-            <div class="legend-subrow-left">
-              <span class="legend-row-label">节点状态:</span>
-              <div class="legend-item" title="设备正常稳态运行"><span class="legend-dot dot-normal"></span> 正常运行</div>
-              <div class="legend-item" title="识别平面命中可疑特征/观测时窗异常"><span class="legend-dot dot-suspect"></span> 疑似异常</div>
-              <div class="legend-item" title="受到攻击平面 EffectRequest 物理/通信致效作用"><span class="legend-dot dot-attacked"></span> 攻击受损</div>
-            </div>
-
-            <div class="legend-subrow-right">
-              <span class="data-cell">全站母线: <strong id="env-bus-v" class="num-slot" style="color:#38bdf8;">10.00</strong> kV</span>
-              <span class="data-sep">|</span>
-              <span class="data-cell">线路电流: <strong id="env-line-i" class="num-slot" style="color:#38bdf8;">0.00</strong> A</span>
-              <span class="data-sep">|</span>
-              <span class="data-cell">在途报文: <strong id="env-in-flight" class="num-slot num-slot-sm" style="color:#10b981;">0</strong> 帧</span>
+      <!-- 拓扑图例：链路定义 / 节点状态 / 报文粒子 -->
+      <div class="topo-legend">
+        <div class="legend-row">
+          <div class="legend-group">
+            <span class="legend-group-title">链路定义</span>
+            <div class="legend-chips">
+              <span class="legend-item" title="站内以太网数字通信总线 (MMS/GOOSE/SV)"><span class="legend-line line-wired"></span>站内网络总线</span>
+              <span class="legend-item" title="控制接口至一次设备电磁线圈的硬接线控制回路"><span class="legend-line line-hardwire"></span>控制硬接线</span>
+              <span class="legend-item" title="一次主干回路高压电气主接线"><span class="legend-line line-elec"></span>电气主回路</span>
+              <span class="legend-item" title="变压器本体热传导至油温计的物理接触测量关系"><span class="legend-line line-physical"></span>热传导耦合</span>
             </div>
           </div>
         </div>
-        
+        <div class="legend-row">
+          <div class="legend-group">
+            <span class="legend-group-title">节点状态</span>
+            <div class="legend-chips">
+              <span class="legend-item" title="设备正常稳态运行"><span class="legend-dot dot-normal"></span>正常</span>
+              <span class="legend-item" title="识别平面命中可疑特征/观测时窗异常"><span class="legend-dot dot-suspect"></span>疑似</span>
+              <span class="legend-item" title="受到攻击平面 EffectRequest 物理/通信致效作用"><span class="legend-dot dot-attacked"></span>受损</span>
+            </div>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="legend-group">
+            <span class="legend-group-title">报文粒子</span>
+            <div class="legend-chips">
+              <span class="legend-item" title="采样值、设备状态、对时同步等数据类报文"><span class="particle-dot data"></span>数据</span>
+              <span class="legend-item" title="控制命令、保护动作及设备执行反馈"><span class="particle-dot command"></span>控制交互</span>
+              <span class="legend-item" title="未能归类或扩展类型"><span class="particle-dot other"></span>其他</span>
+            </div>
+          </div>
+          <div class="legend-actions">
+            <select id="particle-filter" class="form-select particle-filter-select">
+              <option value="all" selected>全部报文</option>
+              <option value="data">数据分组</option>
+              <option value="command">控制交互分组</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+        </div>
+      </div>
         <!-- SVG 拓扑画布 -->
         <svg id="topo-svg" class="topo-svg" viewBox="0 0 920 620" preserveAspectRatio="xMidYMid meet">
           <defs>
@@ -210,15 +208,14 @@
       </div>
     </section>
 
-    <!-- 右侧：选定设备状态监测与告警列表 -->
+    <!-- 右侧：常态监控详情与动态事件 -->
     <aside class="panel side-panel right-panel">
       <div class="panel-header">
-        <span class="icon">🔍</span>
-        <h2>设备详情与实时态势</h2>
+        <span class="icon">🖥</span>
+        <h2>监控交互流（实时）</h2>
       </div>
-
-      <div id="device-inspector" class="device-inspector">
-        <div class="inspector-placeholder">请在拓扑中点击任意节点查看设备物理量及受损状态</div>
+      <div id="monitor-panel" class="monitor-panel">
+        <div class="alert-empty">暂无监控交互数据，启动运行后自动刷新</div>
       </div>
 
       <div class="panel-header" style="margin-top: 14px;">
@@ -231,9 +228,10 @@
     </aside>
   </main>
 
-  <script src="/app.js?v=20260910_v8"></script>
+  <script src="/app.js?v=20260914_v5"></script>
 </body>
 </html>
+
 
 
 

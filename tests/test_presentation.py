@@ -15,7 +15,7 @@ from sim2030.presentation.server import PresentationServer
 from sim2030.records import RunReader
 from tests.support import make_observation_event, write_jsonl, write_pipeline_scenario
 
-SUBSTATION_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scenarios", "substation.json")
+SUBSTATION_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "substation.json")
 
 
 class TestPresentationServer(unittest.TestCase):
@@ -103,6 +103,10 @@ class TestPresentationViews(unittest.TestCase):
         reader = RunReader(run_dir)
         self.assertEqual(system["observations"]["event_count"], len(reader.evidence()))
         self.assertGreaterEqual(len(system["topology"]["devices"]), 1)
+        self.assertIn("management", system)
+        self.assertIn("environment", system)
+        self.assertIn("in_flight_messages", system)
+        self.assertTrue(any(device.get("name") for device in system["topology"]["devices"]))
 
         timeline = presentation_views.build_timeline(run_dir)
         self.assertGreaterEqual(len(timeline["attacks"]), 1)

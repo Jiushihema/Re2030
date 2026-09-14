@@ -62,5 +62,33 @@ class TestPipeline(unittest.TestCase):
         self.assertLessEqual(first_recognition, first_defense)
 
 
+    def test_attack_demo_scenario_runs_closed_loop(self):
+        """仓库内置攻防演示场景应能完整跑通攻击→识别→防御→评估。"""
+        demo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "scenarios", "substation-attack-demo.json")
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Application(output_root=os.path.join(tmp, "runs"))
+            app.load(demo_path)
+            app.run_to_end()
+            self.assertEqual(app.status, STATUS_FINISHED)
+
+            reader = RunReader(os.path.join(tmp, "runs", app.run_id))
+            attacks = [r for r in reader.read("attack") if r.get("type") == "attack_submission"]
+            self.assertEqual(len(attacks), 1)
+            self.assertEqual(attacks[0]["status"], "accepted")
+
+            recognitions = [r for r in reader.read("recognition") if r.get("attack_detected")]
+            self.assertGreater(len(recognitions), 0)
+            self.assertTrue(any(r.get("recognition_status") == "suspected" for r in recognitions))
+
+            defenses = reader.read("defense")
+            self.assertEqual(len(defenses), 3)
+            self.assertTrue(any(r.get("action_type") == "business_compensation" for r in defenses))
+            self.assertTrue(any(r.get("status") == "succeeded" for r in defenses))
+
+            observations = [r for r in reader.read("observation") if r.get("type") == "observation_batch"]
+            self.assertGreater(len(observations), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

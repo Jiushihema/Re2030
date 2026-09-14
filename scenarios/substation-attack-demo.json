@@ -1,11 +1,11 @@
 {
-  "scenario_id": "substation-live",
-  "name": "变电站场景",
+  "scenario_id": "substation-attack-demo",
+  "name": "变电站攻防演示",
   "observation_mode": "file_replay",
   "seed": 2030,
   "simulation": {
     "dt_us": 100000,
-    "duration_us": 86400000000
+    "duration_us": 8000000
   },
   "environment": {
     "nominal_voltage_kv": 10.0,
@@ -180,7 +180,8 @@
       "parameters": {
         "control_port": "control",
         "nominal_tap": 5,
-        "initial_oil_temp_c": 40.0
+        "initial_oil_temp_c": 40.0,
+        "default_duration_ms": 2000
       },
       "capabilities": [
         {
@@ -193,6 +194,13 @@
           },
           "readable_state": [
             "tap_position",
+            "oil_temp_c"
+          ]
+        },
+        {
+          "action_type": "business_compensation",
+          "parameter_ranges": {},
+          "readable_state": [
             "oil_temp_c"
           ]
         }
@@ -578,11 +586,45 @@
       }
     }
   ],
-  "operations": [
+  "operations": [],
+  "attacks": [
     {
-      "time_us": 200000,
-      "target_asset_id": "brk",
-      "action_type": "close"
+      "attack_id": "a-em-oil-temp",
+      "attack_type": "electromagnetic",
+      "target_id": "oil_temp",
+      "target_asset_ids": [
+        "tap"
+      ],
+      "start_time_us": 1000000,
+      "end_time_us": 3000000,
+      "effect_type": "reading_offset",
+      "parameters": {
+        "offset": 55.0
+      }
     }
-  ]
+  ],
+  "recognition": {
+    "enabled": true,
+    "window_size_us": 1000000,
+    "confidence_threshold": 0.5
+  },
+  "defense": {
+    "enabled": true,
+    "confidence_threshold": 0.5,
+    "valid_window_us": 1000000
+  },
+  "observations": {
+    "provider_dir": "observations",
+    "file_pattern": "*.jsonl",
+    "time_mapping": {
+      "origin": "2026-09-09T00:00:00Z",
+      "unit": "us"
+    },
+    "expected_sources": [
+      {
+        "provider_id": "p-business",
+        "source_type": "business"
+      }
+    ]
+  }
 }

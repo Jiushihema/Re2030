@@ -32,6 +32,10 @@ class PrimaryEquipment(Device):
     该端口回送。
     """
 
+    COMMAND_LABELS: Dict[str, str] = {}
+    PARAM_LABELS: Dict[str, str] = {}
+    NON_MANUAL_ACTIONS = set()
+
     def __init__(self, spec: DeviceSpec):
         super().__init__(spec)
         self.control_port: str = self.parameters.get("control_port", "control")
@@ -53,6 +57,46 @@ class PrimaryEquipment(Device):
         duration_ms = float(parameters.get("duration_ms", self.parameters.get("default_duration_ms", 0)))
         duration_us = int(duration_ms * 1000) + int(self._effect("execution_delay_us", 0))
         return duration_us
+
+    def describe_controls(self) -> List[Dict[str, Any]]:
+        """把能力声明翻译为演示平面可直接渲染的命令控制项。"""
+        controls: List[Dict[str, Any]] = []
+        for cap in self._capabilities:
+            action = cap.action_type
+            if action in self.NON_MANUAL_ACTIONS:
+                continue
+            params: List[Dict[str, Any]] = []
+            for key, rng in cap.parameter_ranges.items():
+                params.append({
+                    "key": key,
+                    "label": self.PARAM_LABELS.get(key, key),
+                    "value": self._param_current_value(key),
+                    "input": self._build_param_input(key, rng),
+                })
+            controls.append({
+                "kind": "command",
+                "action": action,
+                "label": self.COMMAND_LABELS.get(action, action),
+                "params": params,
+            })
+        return controls
+
+    def _param_current_value(self, key: str) -> Any:
+        if key in self.state:
+            return self.state[key]
+        return self.parameters.get(key)
+
+    @staticmethod
+    def _build_param_input(key: str, rng: Any) -> Dict[str, Any]:
+        info: Dict[str, Any] = {"type": "number"}
+        if isinstance(rng, (list, tuple)) and len(rng) >= 2:
+            low, high = rng[0], rng[1]
+            info["min"] = low
+            info["max"] = high
+            info["step"] = 1 if isinstance(low, int) and isinstance(high, int) else 0.1
+        else:
+            info["step"] = 1
+        return info
 
     # ── 动作受理 ──
     def request_action(self, request: Dict[str, Any]) -> ActionFeedback:
@@ -141,6 +185,9 @@ class SwitchEquipment(PrimaryEquipment):
     状态：``position``（open/closed）、``operation_time_us``（最近动作完成时刻）。
     """
 
+    COMMAND_LABELS = {"close": "合闸", "open": "分闸", "trip": "保护跳闸"}
+    NON_MANUAL_ACTIONS = {"trip"}
+
     def __init__(self, spec: DeviceSpec):
         super().__init__(spec)
         self.state.setdefault("position", self.parameters.get("initial_position", "open"))
@@ -157,8 +204,12 @@ class SwitchEquipment(PrimaryEquipment):
     def _apply_action(self, action_type: str, parameters: Dict[str, Any], time_us: int = 0) -> None:
         if action_type == "close":
             self.state["position"] = "closed"
+            self.state.pop("tripped", None)
         elif action_type == "open":
             self.state["position"] = "open"
+        elif action_type == "trip":
+            self.state["position"] = "open"
+            self.state["tripped"] = True
         self.state["operation_time_us"] = time_us
 
 
@@ -167,6 +218,9 @@ class TransformerEquipment(PrimaryEquipment):
 
     状态：``tap_position``、``oil_temp_c``；分接档位改变变比，热状态用简化一阶模型。
     """
+
+    COMMAND_LABELS = {"set_tap": "调节分接档位", "raise_tap": "升高一档", "lower_tap": "降低一档"}
+    PARAM_LABELS = {"tap_position": "目标分接档位"}
 
     def __init__(self, spec: DeviceSpec):
         super().__init__(spec)
@@ -209,6 +263,8 @@ class CompensationEquipment(PrimaryEquipment):
     状态：``connected``（bool）。
     """
 
+    COMMAND_LABELS = {"connect": "投入", "disconnect": "切除"}
+
     def __init__(self, spec: DeviceSpec):
         super().__init__(spec)
         self.state.setdefault("connected", bool(self.parameters.get("initial_connected", False)))
@@ -228,6 +284,9 @@ class AuxiliaryEquipment(PrimaryEquipment):
 
     状态：``running``（bool）、``speed_ratio``（0..1，仅在可调速时使用）。
     """
+
+    COMMAND_LABELS = {"start": "启动", "stop": "停止", "set_speed": "调节转速"}
+    PARAM_LABELS = {"speed_ratio": "转速比例"}
 
     def __init__(self, spec: DeviceSpec):
         super().__init__(spec)

@@ -16,7 +16,8 @@ from sim2030.scenario import (
     validate_scenario,
 )
 
-SCENARIO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scenarios", "substation.json")
+SCENARIO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "substation.json")
+LIVE_SCENARIO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scenarios", "substation-live.json")
 
 
 def make_config() -> ScenarioConfig:
@@ -47,6 +48,13 @@ class TestLoadScenario(unittest.TestCase):
         schema_path = config.observations.get("schema_path", "")
         self.assertTrue(os.path.isabs(schema_path))
         self.assertTrue(schema_path.endswith("monitoring-event.schema.json"))
+
+    def test_load_live_scenario(self):
+        config = load_scenario(LIVE_SCENARIO_PATH)
+        self.assertEqual(config.scenario_id, "substation-live")
+        self.assertEqual(config.name, "变电站场景")
+        self.assertEqual(len(config.devices), 15)
+        self.assertEqual(len(config.links), 17)
 
 
 class TestValidateScenario(unittest.TestCase):

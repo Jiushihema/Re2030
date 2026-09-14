@@ -15,12 +15,12 @@
 | 攻击 | `sim2030/attack/` | 已完成（计划解析、到期提交 `EffectRequest`） |
 | 识别 | `sim2030/recognition/` | 已完成（引擎 + 单域/关联检测器接口，规则基线仅用于调通） |
 | 防御 | `sim2030/defense/` | 已完成（策略选择、动作跟踪、恢复判据） |
-| 演示 | `sim2030/presentation/` | **待加强**（现有 API 完整，页面还是表格形态，需做态势拓扑页） |
+| 演示 | `sim2030/presentation/` | 已完成（态势拓扑大屏 + 三行图例 + 报文粒子过滤 + 右侧监控详情 + 自动/单步推演） |
 
 共用支撑：`application.py`（运行调度）、`records.py`（分流记录/回放）、`evaluation.py`（独立评估）、
 `scenario.py`（场景校验与设备工厂）、`contracts.py`（数据契约）、`constants.py`（常量）。
 
-约束：后端仅用 Python 标准库，无第三方依赖；测试使用 `unittest`。当前 `python -m unittest` **48 项全部通过**。
+约束：后端仅用 Python 标准库，无第三方依赖；测试使用 `unittest`。当前 `python -m unittest` **50 项全部通过**。
 
 ## 2. 目录结构
 
@@ -38,7 +38,9 @@ Re2030/
 │   ├── recognition/          # 识别平面
 │   ├── defense/              # 防御平面
 │   └── presentation/         # 演示平面：server.py + views.py + static/(index.html app.js style.css)
-├── scenarios/substation.json # 首个 10kV 变电站基础场景
+├── scenarios/substation-live.json      # 变电站长周期运行态势场景
+├── scenarios/substation-attack-demo.json # 攻防演示场景（攻击→识别→防御→评估闭环）
+├── scenarios/observations/           # 文件回放观测数据（events.jsonl）
 ├── tests/                    # unittest 回归测试
 ├── docs/                     # 设计文档（含接口规范）
 ├── main.py                   # 无界面运行 / --ui 启动演示平面
@@ -65,11 +67,14 @@ Re2030/
 ```powershell
 cd D:\2030\codes
 
-# 无界面跑到结束
-D:\python\python.exe main.py --scenario scenarios/substation.json --output runs
+# 无界面跑到结束（长周期正常业务态势）
+D:\python\python.exe main.py --scenario scenarios/substation-live.json --output runs
 
-# 启动演示平面 UI
-D:\python\python.exe main.py --ui --scenario scenarios/substation.json --output runs --port 8000
+# 无界面跑到结束（攻防演示，跑攻击→识别→防御→评估闭环）
+D:\python\python.exe main.py --scenario scenarios/substation-attack-demo.json --output runs
+
+# 启动演示平面 UI（想看攻防效果推荐用这个场景）
+D:\python\python.exe main.py --ui --scenario scenarios/substation-attack-demo.json --output runs --port 8000
 ```
 
 浏览器打开 `http://127.0.0.1:8000`。
@@ -79,7 +84,7 @@ D:\python\python.exe main.py --ui --scenario scenarios/substation.json --output 
 ```powershell
 cd D:\2030\codes
 D:\python\python.exe -m unittest discover -s tests -t . -v
-# 预期：Ran 48 tests ... OK
+# 预期：Ran 50 tests ... OK
 ```
 
 ## 4. 演示平面 HTTP 接口契约
@@ -183,32 +188,25 @@ body 示例：
 - `view=evaluation`：`{"evaluation":{...}}`（运行未结束为 `{"evaluation":null,"reason":...}`）。
 - `view=snapshot`：`{"snapshots":{...}}`（按 `time_us` 回放真值快照）。
 
-## 5. 下一步任务：演示平面态势页面（重点）
+## 5. 当前演示平面已实现的能力
 
-当前 `sim2030/presentation/static/` 里的 `system` 视图只是 HTML 表格，**不是**用户要的态势图。
-需求要点：
+前端 `sim2030/presentation/static/` 已完成态势拓扑页，可直接“双击即跑”，无构建工具：
 
-1. **拓扑图**：用内联 SVG 画节点 + 连线（不建议引入 CDN/构建工具，仓库保持“双击即跑”）。
-   - 设备按 `layer` 分层：`station`（站控层）/ `bay`（间隔层）/ `process`（过程层）纵向排布。
-   - 连线从 `topology.links[].endpoint_a[0]` → `endpoint_b[0]` 取设备 ID 定位端点。
-   - 设备可视、名称/类型可见。
-2. **设备状态可视**：节点颜色按状态区分：
-   - `effects` 非空 → 红色（受攻击作用影响）。
-   - 出现在 `recognition[].target_asset_ids / affected_asset_ids` → 琥珀色（疑似异常）。
-   - 正常 → 绿色（可再加按设备类型/层级的浅色区分）。
-   - 状态文字：开关 `position`、变压器 `tap_position`、冷却 `running`、补偿 `connected` 等。
-3. **点击设备出详情**：显示 `device_id / name / device_type / layer / state / effects`。
-4. **顶部态势卡片**：运行状态、`time_us`、设备数、链路数、观测事件数、识别数、防御数、缺失/迟到数。
-5. **动态刷新**：`setInterval` 轮询 `system` 视图；运行中可周期性调 `POST .../operations` 的 `action_type:"step"`
-   推进仿真（间隔建议 1–2s，与轮询节拍错开），让 `brk/tap/cool` 的调度操作随时间变化可见。
-6. 保留原有 tabs（`system/timeline/observations/recognition/defense/evaluation`）与运行控制按钮。
-7. 页面风格参考“态势图那种”：深色背景更直观，可加图例、告警条、选中高亮。
-
-后端已为这个任务备好的改动（见下节 6），前端只需消费接口，不要改仿真算法，不要直接写设备状态。
+1. **拓扑图**：内联 SVG 按 `station / bay / process` 三层绘制 15 个设备与 17 条链路；链路端点取自 `topology.links[].endpoint_a[0]` → `endpoint_b[0]`。
+2. **设备状态可视**：
+   - `effects` 非空 → 红色（受攻击作用影响）
+   - 出现在 `recognition[].target_asset_ids / affected_asset_ids` → 琥珀色（疑似异常）
+   - 正常 → 绿色
+   - 状态文字显示开关 `position`、变压器 `tap_position`、冷却 `running`、补偿 `connected` 等；不再展示裸 `device_id`/端口小字。
+3. **三行图例**：链路定义 / 节点状态 / 报文粒子；报文粒子按 `data`（采样/状态）与 `command`（命令）等大类过滤展示。
+4. **右侧监控详情**：常态展示站端监控系统与测控装置的最近接收、最近下发、最新采样、命令执行与执行反馈，面向人可读。
+5. **设备控制面板**：左侧不再固定下发业务操作，而是按所选设备的可控制项动态显示（例如保护装置阈值、断路器合闸）。
+6. **动态推演**：支持开始/暂停/停止、单步步进、自动推演（1s/步）、历史时刻快照回放。
+7. **tabs 保留**：`system/timeline/observations/recognition/defense/evaluation`。
 
 ## 6. 本次交接前的后端改动记录
 
-相对上游 `2030`，本仓库在演示相关接口上做了以下兼容性改动（均已通过 48 项测试）：
+相对上游 `2030`，本仓库在演示相关接口上做了以下兼容性改动（均已通过 50 项测试）：
 
 1. `application.py::_config_summary()` 新增 `links` 字段，使 `manifest.json` 保存拓扑链路；
    `presentation/views.py::build_system_view()` 因此能从 `manifest.get("links")` 取到回放拓扑（此前回放链路为空）。
@@ -216,8 +214,13 @@ body 示例：
    `recognition`、`defense` 字段，让前端一张 `system` 视图即可画态势卡片。
 3. `application.py` 新增 `step` 控制动作（`_submit_control` 中处理），并把 `submit_operation/step/get_view`
    用 `threading.RLock` 串行化，避免 `ThreadingHTTPServer` 下轮询与步进并发读写的竞态。
-4. `index.html` 已恢复为与当前 `app.js/style.css` 匹配的三栏基础布局（表格形态），作为前端改造的稳定基线；
-   **新态势页需同步改 `index.html/app.js/style.css` 三个文件**，请保持 `/api` 接口路径不变。
+4. 前端三栏态势页已落地：`index.html/app.js/style.css` 当前是完整拓扑大屏，不再是表格基线；
+   如需继续改前端，仍集中在 `sim2030/presentation/static/`，保持 `/api` 接口路径不变。
+5. 新增演示场景 `scenarios/substation-attack-demo.json` 与回放观测 `scenarios/observations/events.jsonl`：
+   - 攻击：`attack_type=electromagnetic`，`effect_type=reading_offset`，目标 `oil_temp`，偏移 `+55℃`，1.0s–3.0s 生效；
+   - 识别：`recognition.enabled=true`，1.0s 窗口，规则基线对 `oil_temp_c` 异常产生 suspected；
+   - 防御：`defense.enabled=true`，`business_compensation` 对 `tap` 做油温补偿，planned→executing→succeeded；
+   - 评估：`overall_score=1.0`，识别 delay=500ms，防御 delay=500ms，主线闭环跑通。
 
 ## 7. 协作规范
 
@@ -229,9 +232,9 @@ body 示例：
 
 ## 8. 验证与已知风险
 
-- 验证命令：`D:\python\python.exe -m unittest discover -s tests -t . -v` → `Ran 48 tests ... OK`。
-- 演示页面当前只有表格形态，`system` 视图不含态势 SVG；这是下一步要补的工作。
-- 基础场景 `scenarios/substation.json` 未启用 `recognition/defense`，`attacks=[]`，因此实时页面在
-  攻击/识别/防御区会显示空；如需展示告警效果，需新增一个带攻击/识别/防御/观测配置的演示场景
-  （可参考 `tests/support.py::write_pipeline_scenario` 的构造方式）。
-- 活动运行的 `time_us` 只在调用 `step` 后前进；纯点“开始”不会自动推进，前端需自行驱动 `step`。
+- 验证命令：`D:\python\python.exe -m unittest discover -s tests -t . -v` → `Ran 50 tests ... OK`。
+- 演示页面已经完成态势拓扑大屏；使用 `substation-attack-demo` 自动推演到约 1.5s 后可见：
+  识别疑似异常（tap 琥珀色）→ 防御动作 planned/executing/succeeded → 攻击结束后恢复正常。
+- `substation-live.json` 未启用 `recognition/defense`，`attacks=[]`，用于长周期正常业务态势；
+  如需演示告警/攻防闭环，使用 `substation-attack-demo.json`。
+- 活动运行的 `time_us` 只在调用 `step` 后前进；纯点“开始”不会自动推进，前端需打开“自动推演步进”或手动单步。

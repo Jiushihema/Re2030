@@ -11,7 +11,7 @@ from sim2030.base.engine import SimulationEngine
 from sim2030.contracts import Capability, DeviceSpec, LinkSpec, ScenarioConfig
 from sim2030.scenario import load_scenario
 
-SCENARIO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scenarios", "substation.json")
+SCENARIO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "substation.json")
 
 
 def run_engine(config, end_us, dt_us=100000, operations=()):

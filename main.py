@@ -12,7 +12,7 @@ from sim2030.application import Application
 
 def parse_args():
     parser = argparse.ArgumentParser(description="运行 2030 仿真场景")
-    parser.add_argument("--scenario", default=os.path.join("scenarios", "substation.json"),
+    parser.add_argument("--scenario", default=os.path.join("scenarios", "substation-live.json"),
                         help="场景 JSON 路径")
     parser.add_argument("--output", default="runs", help="运行记录输出目录")
     parser.add_argument("--ui", action="store_true", help="启动演示平面 HTTP 服务")

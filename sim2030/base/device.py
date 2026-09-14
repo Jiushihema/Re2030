@@ -135,6 +135,10 @@ class Device:
     def _effect(self, key: str, default: Any = None) -> Any:
         return self._effects.get(key, default)
 
+    def set_parameter(self, key: str, value: Any) -> None:
+        """更新运行期可调参数；子类在读取参数时即时生效。"""
+        self.parameters[key] = value
+
     # ──────────────────────────────────────────────
     # 生命周期接口（子类实现业务）
     # ──────────────────────────────────────────────
@@ -145,6 +149,10 @@ class Device:
 
     def capabilities(self) -> List[Capability]:
         return list(self._capabilities)
+
+    def describe_controls(self) -> List[Dict[str, Any]]:
+        """返回演示平面可用的控制/调节项描述，默认无控制项。"""
+        return []
 
     def request_action(self, request: Dict[str, Any]) -> ActionFeedback:
         """接收底座分派的动作，检查能力与联锁，登记执行及反馈时序。"""

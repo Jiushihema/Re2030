@@ -17,7 +17,7 @@
 - `sim2030/recognition/`：识别引擎与单域/关联检测器接口。
 - `sim2030/defense/`：防御策略选择、动作跟踪与恢复判据。
 - `sim2030/presentation/`：标准库 HTTP 服务、展示视图与静态页面。
-- `scenarios/substation.json`：首个 10kV 变电站基础场景。
+- `scenarios/substation-live.json`：当前唯一 10kV 变电站场景。
 - `tests/`：使用标准库 `unittest` 的回归测试。
 - `main.py`：无界面运行入口或演示平面入口。
 
@@ -25,14 +25,14 @@
 
 ```powershell
 cd codes
-D:\python\python.exe main.py --scenario scenarios/substation.json --output runs
+D:\python\python.exe main.py --scenario scenarios/substation-live.json --output runs
 ```
 
 ## 启动演示平面 UI
 
 ```powershell
 cd codes
-D:\python\python.exe main.py --ui --scenario scenarios/substation.json --output runs --port 8000
+D:\python\python.exe main.py --ui --scenario scenarios/substation-live.json --output runs --port 8000
 ```
 
 浏览器打开 `http://127.0.0.1:8000`。演示平面提供以下最小接口：

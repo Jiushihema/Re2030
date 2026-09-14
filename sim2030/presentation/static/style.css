@@ -1,4 +1,4 @@
-﻿/* 2030 仿真系统演示平面：深色高对比科技感工业大屏样式规范 */
+/* 2030 仿真系统演示平面：深色高对比科技感工业大屏样式规范 */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -470,6 +470,118 @@ body {
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
 }
 
+.form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.device-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-control-empty {
+  padding: 10px 8px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input-with-unit input {
+  flex: 1;
+  min-width: 0;
+}
+
+.control-unit {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.monitor-log-title {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--accent-cyan);
+  border-bottom: 1px dashed var(--border-color);
+  padding-bottom: 3px;
+}
+
+.monitor-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.monitor-time {
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.monitor-type {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 3px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.monitor-text {
+  flex: 1;
+  color: #e2e8f0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.monitor-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: #070e1b;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.monitor-device-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f5f9;
+  border-left: 3px solid var(--accent-cyan);
+  padding-left: 7px;
+  margin-bottom: 4px;
+}
+
+.monitor-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+.monitor-sample {
+  display: block;
+  margin-top: 2px;
+  color: #86efac;
+  font-family: Consolas, monospace;
+  font-size: 10.5px;
+  white-space: normal;
+  line-height: 1.45;
+}
+
 .replay-group {
   display: flex;
   gap: 6px;
@@ -539,41 +651,59 @@ body {
 }
 
 .topo-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 14px;
-  background: rgba(13, 24, 41, 0.85);
+  padding: 8px 12px;
+  background: linear-gradient(180deg, rgba(13, 24, 41, 0.96), rgba(9, 19, 34, 0.92));
   border-bottom: 1px solid var(--border-color);
   font-size: 11px;
   color: var(--text-secondary);
+  position: relative;
+  z-index: 5;
+}
+
+.legend-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.legend-row-label {
-  color: var(--accent-cyan);
-  font-weight: 600;
-  font-size: 11px;
-  min-width: 58px;
+.legend-row + .legend-row {
+  margin-top: 4px;
 }
 
-.legend-subrow-left {
+.legend-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.legend-subrow-right {
+.legend-group-title {
+  color: var(--accent-cyan);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.legend-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.legend-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   color: #94a3b8;
   font-family: Consolas, monospace;
 }
@@ -603,9 +733,26 @@ body {
 }
 
 .legend-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border: 1px solid rgba(30, 58, 95, 0.75);
+  background: rgba(15, 28, 48, 0.72);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.legend-item:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(27, 47, 77, 0.85);
+  color: #e2e8f0;
+}
+
+.legend-item .particle-dot {
+  margin-right: 0;
 }
 
 .legend-dot {
@@ -620,8 +767,10 @@ body {
 .dot-attacked { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
 
 .legend-divider {
-  color: #334155;
-  margin: 0 4px;
+  width: 1px;
+  height: 18px;
+  background: var(--border-color);
+  flex-shrink: 0;
 }
 
 .legend-line {
@@ -785,11 +934,14 @@ body {
 
 /* 右侧设备详情与告警列表 */
 .device-inspector {
+  flex: 0 0 auto;
+  max-height: 30%;
+  min-height: 150px;
+  overflow-y: auto;
   background: #070e1b;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 12px;
-  min-height: 220px;
 }
 
 .inspector-placeholder {
@@ -846,7 +998,7 @@ body {
 }
 
 .alert-feed {
-  flex: 1;
+  flex: 0 0 auto;
   background: #070e1b;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -855,7 +1007,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 320px;
+  max-height: 170px;
+  min-height: 80px;
 }
 
 .alert-empty {
@@ -901,26 +1054,51 @@ body {
 
 /* 报文流粒子动画 */
 .msg-particle {
-  fill: #38bdf8;
-  filter: drop-shadow(0 0 4px #06b6d4);
+  fill: #64748b;
+  filter: drop-shadow(0 0 3px #64748b);
   pointer-events: none;
 }
-.msg-particle.sampling {
-  fill: #10b981;
-  filter: drop-shadow(0 0 4px #10b981);
+.msg-particle.data {
+  fill: #22c55e;
+  filter: drop-shadow(0 0 5px #22c55e);
 }
 .msg-particle.command {
   fill: #f59e0b;
   filter: drop-shadow(0 0 5px #f59e0b);
 }
-.msg-particle.feedback {
-  fill: #a855f7;
-  filter: drop-shadow(0 0 4px #a855f7);
+.msg-particle.other {
+  fill: #64748b;
+  filter: drop-shadow(0 0 3px #64748b);
 }
 
+.particle-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+  box-shadow: 0 0 5px currentColor;
+}
+.particle-dot.data { background: #22c55e; color: #22c55e; }
+.particle-dot.command { background: #f59e0b; color: #f59e0b; }
+.particle-dot.other { background: #64748b; color: #64748b; }
 
-
-
+.particle-filter-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.particle-filter-select {
+  padding: 4px 8px;
+  background: #0d1829;
+  color: #e2e8f0;
+  border: 1px solid #1e3a5f;
+  border-radius: 5px;
+  font-size: 12px;
+}
 
 .form-select {
   padding: 6px 8px;
@@ -952,3 +1130,107 @@ body {
   border-style: dashed;
 }
 
+
+
+/* 子视图（时间线/监测/识别/防御/评估/快照）人类可读卡片 */
+.sub-view-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.sub-view-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #38bdf8;
+}
+
+.sub-view-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.sub-section {
+  margin-bottom: 14px;
+}
+
+.sub-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.sub-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sub-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid #3b82f6;
+  border-radius: 0 6px 6px 0;
+  padding: 10px 12px;
+}
+
+.sub-card.danger { border-left-color: #ef4444; }
+.sub-card.warning { border-left-color: #f59e0b; }
+.sub-card.normal { border-left-color: #3b82f6; }
+
+.sub-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.sub-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sub-card-id {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--accent-cyan);
+}
+
+.sub-card-time {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.sub-card-body {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.sub-card-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.sub-card-value.ok { color: #10b981; }
+.sub-card-value.warn { color: #f59e0b; }
+.sub-card-value.muted { color: #94a3b8; }
+
+.sub-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 28px 12px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+}

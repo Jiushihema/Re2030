@@ -106,6 +106,14 @@ class PresentationServer:
             if route.startswith("/api/runs/") and route.endswith("/operations") and method == "POST":
                 run_id = route.split("/")[3]
                 return self._submit_operation(run_id, self._parse_json(body))
+            if route.startswith("/api/runs/") and route.endswith("/parameters") and method == "POST":
+                parts = route.split("/")
+                if len(parts) == 7 and parts[4] == "devices":
+                    return self._set_device_parameter(parts[3], parts[5], self._parse_json(body))
+            if route.startswith("/api/runs/") and route.endswith("/controls") and method == "GET":
+                parts = route.split("/")
+                if len(parts) == 7 and parts[4] == "devices":
+                    return self._get_device_controls(parts[3], parts[5])
             if route.startswith("/api/runs/") and route.endswith("/views") and method == "GET":
                 run_id = route.split("/")[3]
                 return self._views(run_id, query)
@@ -150,6 +158,8 @@ class PresentationServer:
         self._refresh_scenario_paths()
         scenarios: List[Dict[str, Any]] = []
         for scenario_id, path in sorted(self._scenario_paths.items()):
+            if scenario_id == "substation-attack-demo":
+                continue
             try:
                 config = load_scenario(path)
                 scenarios.append({
@@ -198,13 +208,57 @@ class PresentationServer:
         self._seen_request_ids[request_id] = receipt
         return 200, receipt, _JSON_HEADERS
 
+    def _get_device_controls(self, run_id: str, device_id: str) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
+        if not self.application.run_id:
+            return 404, {"error": "当前没有活动运行"}, _JSON_HEADERS
+        if self.application.run_id != run_id:
+            return 404, {"error": f"运行 {run_id} 不存在或已结束"}, _JSON_HEADERS
+        result = self.application.get_device_controls(device_id)
+        if result.get("status") == "not_found":
+            return 404, {"error": result.get("reason", "目标不存在")}, _JSON_HEADERS
+        return 200, result, _JSON_HEADERS
+
+    def _set_device_parameter(self, run_id: str, device_id: str, body: Dict[str, Any]) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
+        if not self.application.run_id:
+            return 404, {"error": "当前没有活动运行"}, _JSON_HEADERS
+        if self.application.run_id != run_id:
+            return 404, {"error": f"运行 {run_id} 不存在或已结束"}, _JSON_HEADERS
+        key = body.get("key") or body.get("parameter")
+        if not key:
+            return 400, {"error": "缺少参数名 key"}, _JSON_HEADERS
+        if "value" not in body:
+            return 400, {"error": "缺少参数值 value"}, _JSON_HEADERS
+        result = self.application.set_device_parameter(device_id, key, body["value"])
+        if result.get("status") == "not_found":
+            return 404, {"error": result.get("reason", "目标不存在")}, _JSON_HEADERS
+        return 200, result, _JSON_HEADERS
+
     def _views(self, run_id: str, query: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
         view_name = self._first(query, "view", "system")
+
+        # 快照视图必须真正按 time_us 读取历史记录，而不是返回当前状态。
+        if view_name == "snapshot":
+            time_us = int(self._first(query, "time_us", 0) or 0)
+            if self.application.run_id == run_id:
+                replayed = self.application.replay(run_id, time_us)
+                data = {
+                    "time_us": replayed.get("time_us", time_us),
+                    "snapshots": replayed.get("device_snapshots", {}),
+                }
+                return 200, {"run_id": run_id, "view": view_name, "data": data}, _JSON_HEADERS
+            run_dir = os.path.join(self.output_root, run_id)
+            if not os.path.isdir(run_dir):
+                return 404, {"error": f"运行 {run_id} 不存在"}, _JSON_HEADERS
+            return 200, {"run_id": run_id, "view": view_name,
+                         "data": self._replay_view(view_name, run_dir, query)}, _JSON_HEADERS
+
         if self.application.run_id == run_id:
             options: Dict[str, Any] = {}
             if "target_ids" in query:
                 options["target_ids"] = query["target_ids"]
             data = self.application.get_view(view_name, options)
+            if view_name == "evaluation":
+                data = self._evaluation_payload(data)
             return 200, {"run_id": run_id, "view": view_name, "data": data}, _JSON_HEADERS
 
         run_dir = os.path.join(self.output_root, run_id)
@@ -230,11 +284,19 @@ class PresentationServer:
         if view_name == "defense":
             return {"defense": reader.read("defense")}
         if view_name == "evaluation":
-            return {"evaluation": asdict(Evaluator().evaluate(run_dir))}
+            return self._evaluation_payload({"evaluation": asdict(Evaluator().evaluate(run_dir))})
         if view_name == "snapshot":
             time_us = int(self._first(query or {}, "time_us", 0) or 0)
             return {"snapshots": reader.snapshot_at(time_us)}
         return {"error": f"未知视图 {view_name}"}
+
+    @staticmethod
+    def _evaluation_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+        """统一评估页协议：前端只依赖 comparison/runs/reason。"""
+        evaluation = data.get("evaluation")
+        if evaluation is None:
+            return {"comparison": None, "runs": [], "reason": data.get("reason", "暂无评估结果")}
+        return presentation_views.build_comparison([evaluation])
 
     def _evidence(self, run_id: str, query: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
         run_dir = os.path.join(self.output_root, run_id)

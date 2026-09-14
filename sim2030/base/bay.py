@@ -123,6 +123,23 @@ class OverCurrentProtectionDevice(ProtectionDevice):
             return s.get(key)
         return None
 
+    def describe_controls(self) -> List[Dict[str, Any]]:
+        return [{
+            "kind": "parameter",
+            "key": "overcurrent_threshold_a",
+            "label": "过流判断阈值",
+            "unit": "A",
+            "value": float(self.parameters.get("overcurrent_threshold_a", 1000.0)),
+            "input": {"type": "number", "min": 0, "step": 1},
+        }]
+
+    def snapshot(self) -> Dict[str, Any]:
+        snap = super().snapshot()
+        snap.setdefault("overview", {})["overcurrent_threshold_a"] = float(
+            self.parameters.get("overcurrent_threshold_a", 1000.0)
+        )
+        return snap
+
 
 class MeasurementControlDevice(Device):
     """测控装置：形成业务量测，检查并下发操作命令，跟踪执行状态。"""
@@ -134,29 +151,47 @@ class MeasurementControlDevice(Device):
         self.command_ports: Dict[str, str] = self.parameters.get("command_ports", {"*": "control"})
         self.report_interval_us: int = int(self.parameters.get("report_interval_us", 1_000_000))
         self._latest_sample: Dict[str, Any] = {}
+        self._last_commands: List[Dict[str, Any]] = []
+        self._last_feedback: List[Dict[str, Any]] = []
         self._next_report_us: int = 0
 
     def receive(self, message: Message) -> None:
         if message.business_type == BusinessType.SAMPLING:
             self._latest_sample = message.payload or {}
         elif message.business_type == BusinessType.COMMAND:
-            ok, reason = self.check_command(message.payload or {})
+            payload = message.payload or {}
+            ok, reason = self.check_command(payload)
+            self._last_commands.append({
+                "time_us": message.created_time_us,
+                "action": payload.get("action_type", ""),
+                "status": "dispatched" if ok else "rejected",
+                "reason": reason,
+                "request_id": payload.get("request_id", ""),
+                "target": (payload.get("parameters") or {}).get("target", ""),
+            })
+            self._last_commands = self._last_commands[-8:]
             if not ok:
                 self._queue(
                     self._new_message(
                         self.up_port, BusinessType.FEEDBACK,
-                        {"request_id": (message.payload or {}).get("request_id", ""), "status": "rejected", "reason": reason},
-                        message.created_time_us, related_request=(message.payload or {}).get("request_id", ""),
+                        {"request_id": payload.get("request_id", ""), "status": "rejected", "reason": reason},
+                        message.created_time_us, related_request=payload.get("request_id", ""),
                     )
                 )
             else:
-                action_type = (message.payload or {}).get("action_type", "")
+                action_type = payload.get("action_type", "")
                 port = self.command_ports.get(action_type, self.command_ports.get("*", "control"))
                 self._queue(
-                    self._new_message(port, BusinessType.COMMAND, message.payload, message.created_time_us,
-                                      related_request=(message.payload or {}).get("request_id", ""))
+                    self._new_message(port, BusinessType.COMMAND, payload, message.created_time_us,
+                                      related_request=payload.get("request_id", ""))
                 )
         elif message.business_type == BusinessType.FEEDBACK:
+            self._last_feedback.append({
+                "time_us": message.created_time_us,
+                "request_id": message.related_request or (message.payload or {}).get("request_id", ""),
+                "payload": message.payload or {},
+            })
+            self._last_feedback = self._last_feedback[-8:]
             self._queue(
                 self._new_message(self.up_port, BusinessType.FEEDBACK, message.payload, message.created_time_us,
                                   related_request=message.related_request)
@@ -176,6 +211,15 @@ class MeasurementControlDevice(Device):
 
     def build_telemetry(self) -> Dict[str, Any]:
         return {"measurement_id": self.asset_id, "sample": self._latest_sample}
+
+    def snapshot(self) -> Dict[str, Any]:
+        data = super().snapshot()
+        data["overview"] = {
+            "latest_sample": self._latest_sample,
+            "last_commands": list(self._last_commands),
+            "last_feedback": list(self._last_feedback),
+        }
+        return data
 
     def step(self, time_us: int, dt_us: int, inputs: Dict[str, Any]) -> List[Message]:
         self._drain_inbox()

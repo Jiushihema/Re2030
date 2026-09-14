@@ -156,6 +156,32 @@ class Application:
         with self._lock:
             return self._submit_operation_locked(request)
 
+    def set_device_parameter(self, device_id: str, key: str, value: Any) -> Dict[str, Any]:
+        """运行期更新设备可调参数；不经过业务命令队列，立即作用于底座实例。"""
+        with self._lock:
+            return self._set_device_parameter_locked(device_id, key, value)
+
+    def _set_device_parameter_locked(self, device_id: str, key: str, value: Any) -> Dict[str, Any]:
+        if not self.run_id:
+            return {"device_id": device_id, "status": "not_found", "reason": "当前没有活动运行"}
+        if device_id not in self._device_ids:
+            return {"device_id": device_id, "status": "not_found", "reason": f"未知目标设备 {device_id}"}
+        result = self.engine.set_device_parameter(device_id, key, value)
+        self._last_step_summary = self._summary()
+        return result
+
+    def get_device_controls(self, device_id: str) -> Dict[str, Any]:
+        """返回指定设备在演示平面可用的控制项描述。"""
+        with self._lock:
+            return self._get_device_controls_locked(device_id)
+
+    def _get_device_controls_locked(self, device_id: str) -> Dict[str, Any]:
+        if not self.run_id:
+            return {"device_id": device_id, "status": "not_found", "reason": "当前没有活动运行"}
+        if device_id not in self._device_ids:
+            return {"device_id": device_id, "status": "not_found", "reason": f"未知目标设备 {device_id}"}
+        return self.engine.get_device_controls(device_id)
+
     def _submit_operation_locked(self, request: Dict[str, Any]) -> Dict[str, Any]:
         request_id = request.get("request_id") or str(uuid.uuid4())
         action_type = request.get("action_type", "")
@@ -272,15 +298,17 @@ class Application:
         if view_name == "observations":
             return self._observation_view()
         if view_name == "recognition":
-            return {"recognition": [asdict(r) for r in (self.recognition_engine.last_results() if self.recognition_engine else [])]}
+            return {"recognition": self._recognition_records()}
         if view_name == "defense":
-            return {"defense": [asdict(a) for a in (self.defense_engine.actions() if self.defense_engine else [])]}
+            return {"defense": self._defense_records()}
         if view_name == "evaluation":
             return self._evaluation_view()
         return {"error": f"未知视图 {view_name}"}
 
     def replay(self, run_id: str, time_us: int) -> Dict[str, Any]:
         """读取已保存记录形成指定时刻视图，不重新执行攻击或防御。"""
+        if self.run_id == run_id and self.recorder is not None:
+            self.recorder.flush()
         run_dir = os.path.join(self.output_root, run_id)
         reader = RunReader(run_dir)
         return {
@@ -288,6 +316,30 @@ class Application:
             "time_us": time_us,
             "device_snapshots": reader.snapshot_at(time_us),
         }
+
+    def _run_reader(self) -> Optional[RunReader]:
+        """读取当前运行记录；运行中先刷新文件缓冲，保证能读到最新步。"""
+        if not self.run_id:
+            return None
+        if self.recorder is not None:
+            self.recorder.flush()
+        return RunReader(os.path.join(self.output_root, self.run_id))
+
+    def _stream_records(self, stream: str) -> List[Dict[str, Any]]:
+        reader = self._run_reader()
+        return reader.read(stream) if reader is not None else []
+
+    def _recognition_records(self) -> List[Dict[str, Any]]:
+        return self._stream_records("recognition")
+
+    def _defense_records(self) -> List[Dict[str, Any]]:
+        return self._stream_records("defense")
+
+    def _attack_submission_records(self) -> List[Dict[str, Any]]:
+        return [r for r in self._stream_records("attack") if r.get("type") == "attack_submission"]
+
+    def _attack_truth_records(self) -> List[Dict[str, Any]]:
+        return [r for r in self._stream_records("truth") if r.get("type") == "attack"]
 
     # ──────────────────────────────────────────────
     # 内部方法：单步调度
@@ -381,6 +433,10 @@ class Application:
             record["time_us"] = result.time_us
             recorder.append("business", record)
 
+        environment = {}
+        if self.engine is not None and hasattr(self.engine, "_environment"):
+            environment = self.engine._environment.snapshot()
+
         recorder.append(
             "truth",
             {
@@ -388,6 +444,7 @@ class Application:
                 "time_us": result.time_us,
                 "device_snapshots": result.device_snapshots,
                 "network_state": result.network_state,
+                "environment": environment,
             },
         )
 
@@ -549,9 +606,10 @@ class Application:
             "in_flight_messages": in_flight_messages,
             "run_id": self.run_id,
             "time_us": self.current_time_us,
-            "attacks": self.attack_planner.attacks(),
-            "recognition": [asdict(r) for r in (self.recognition_engine.last_results() if self.recognition_engine else [])],
-            "defense": [asdict(a) for a in (self.defense_engine.actions() if self.defense_engine else [])],
+            "attacks": self._attack_truth_records(),
+            "attack_submissions": self._attack_submission_records(),
+            "recognition": self._recognition_records(),
+            "defense": self._defense_records(),
         }
 
     def _observation_view(self) -> Dict[str, Any]:

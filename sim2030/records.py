@@ -45,6 +45,11 @@ class RunRecorder:
         """保存外部观测证据索引，保留提供方原事件与原时间。"""
         self.append_many("observation", events)
 
+    def flush(self) -> None:
+        """把已写入记录刷到磁盘，供运行中的回放/评估读取最新数据。"""
+        for handle in self._handles.values():
+            handle.flush()
+
     def close(self) -> None:
         for handle in self._handles.values():
             handle.close()

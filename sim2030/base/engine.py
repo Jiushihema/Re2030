@@ -162,8 +162,29 @@ class SimulationEngine:
     def get_capabilities(self, target_ids: List[str]) -> Dict[str, List[Capability]]:
         return {tid: self._devices[tid].capabilities() for tid in target_ids if tid in self._devices}
 
+    def get_device_controls(self, device_id: str) -> Dict[str, Any]:
+        """返回单台设备在演示平面可用的控制/调节项描述。"""
+        device = self._devices.get(device_id)
+        if device is None:
+            return {"device_id": device_id, "status": "not_found"}
+        return {
+            "device_id": device_id,
+            "name": device.name,
+            "device_type": device.spec.device_type,
+            "layer": device.layer,
+            "controls": device.describe_controls(),
+        }
+
     def get_management(self, target_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         return {tid: self._devices[tid].read_management() for tid in target_ids if tid in self._devices}
+
+    def set_device_parameter(self, device_id: str, key: str, value: Any) -> Dict[str, Any]:
+        """运行期调整单个设备参数，供演示平面/防御平面复用。"""
+        device = self._devices.get(device_id)
+        if device is None:
+            return {"device_id": device_id, "status": "not_found"}
+        device.set_parameter(key, value)
+        return {"device_id": device_id, "status": "updated", "key": key, "value": value}
 
     # ──────────────────────────────────────────────
     # 单步推进

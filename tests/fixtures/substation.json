@@ -1,27 +1,11 @@
 {
-  "scenario_id": "substation-live",
-  "name": "变电站场景",
-  "observation_mode": "file_replay",
-  "seed": 2030,
+  "scenario_id": "substation-001",
+  "name": "10kV 变电站基础场景",
   "simulation": {
     "dt_us": 100000,
-    "duration_us": 86400000000
-  },
-  "environment": {
-    "nominal_voltage_kv": 10.0,
-    "load_active_mw": 2.0,
-    "load_reactive_mvar": 0.5,
-    "ambient_temp_c": 30.0,
+    "duration_us": 5000000,
     "random_seed": 42,
-    "electrical": {
-      "tap_asset": "tap",
-      "compensation_asset": "comp",
-      "breaker_asset": "brk",
-      "cooling_asset": "cool",
-      "tap_step_ratio": 0.02,
-      "nominal_tap": 5,
-      "cap_voltage_boost_kv": 0.2
-    }
+    "start_time": "2026-01-01T00:00:00+08:00"
   },
   "devices": [
     {
@@ -103,7 +87,8 @@
       },
       "parameters": {
         "up_port": "up",
-        "down_port": "down"
+        "down_port": "down",
+        "action_map": {}
       }
     },
     {
@@ -117,7 +102,8 @@
       },
       "parameters": {
         "up_port": "up",
-        "down_port": "down"
+        "down_port": "down",
+        "action_map": {}
       }
     },
     {
@@ -131,7 +117,8 @@
       },
       "parameters": {
         "up_port": "up",
-        "down_port": "down"
+        "down_port": "down",
+        "action_map": {}
       }
     },
     {
@@ -145,17 +132,23 @@
       },
       "parameters": {
         "control_port": "control",
-        "initial_position": "open"
+        "initial_position": "open",
+        "default_duration_ms": 0
+      },
+      "initial_state": {
+        "position": "open"
       },
       "capabilities": [
         {
           "action_type": "close",
+          "parameter_ranges": {},
           "readable_state": [
             "position"
           ]
         },
         {
           "action_type": "open",
+          "parameter_ranges": {},
           "readable_state": [
             "position"
           ]
@@ -180,7 +173,12 @@
       "parameters": {
         "control_port": "control",
         "nominal_tap": 5,
-        "initial_oil_temp_c": 40.0
+        "initial_oil_temp_c": 40.0,
+        "default_duration_ms": 0
+      },
+      "initial_state": {
+        "tap_position": 5,
+        "oil_temp_c": 40.0
       },
       "capabilities": [
         {
@@ -211,15 +209,21 @@
         "control_port": "control",
         "initial_running": false
       },
+      "initial_state": {
+        "running": false,
+        "speed_ratio": 1.0
+      },
       "capabilities": [
         {
           "action_type": "start",
+          "parameter_ranges": {},
           "readable_state": [
             "running"
           ]
         },
         {
           "action_type": "stop",
+          "parameter_ranges": {},
           "readable_state": [
             "running"
           ]
@@ -239,15 +243,20 @@
         "control_port": "control",
         "initial_connected": false
       },
+      "initial_state": {
+        "connected": false
+      },
       "capabilities": [
         {
           "action_type": "connect",
+          "parameter_ranges": {},
           "readable_state": [
             "connected"
           ]
         },
         {
           "action_type": "disconnect",
+          "parameter_ranges": {},
           "readable_state": [
             "connected"
           ]
@@ -265,7 +274,8 @@
       "parameters": {
         "input_key": "line_current_a",
         "unit": "A",
-        "sample_interval_us": 100000
+        "sample_interval_us": 100000,
+        "up_port": "up"
       }
     },
     {
@@ -279,7 +289,8 @@
       "parameters": {
         "input_key": "bus_voltage_kv",
         "unit": "kV",
-        "sample_interval_us": 100000
+        "sample_interval_us": 100000,
+        "up_port": "up"
       }
     },
     {
@@ -294,7 +305,8 @@
       "parameters": {
         "input_key": "oil_temp_c",
         "unit": "C",
-        "sample_interval_us": 1000000
+        "sample_interval_us": 1000000,
+        "up_port": "up"
       }
     },
     {
@@ -578,11 +590,60 @@
       }
     }
   ],
+  "environment": {
+    "nominal_voltage_kv": 10.0,
+    "load_active_mw": 2.0,
+    "load_reactive_mvar": 0.5,
+    "ambient_temp_c": 30.0,
+    "random_seed": 42,
+    "electrical": {
+      "tap_asset": "tap",
+      "compensation_asset": "comp",
+      "breaker_asset": "brk",
+      "cooling_asset": "cool",
+      "tap_step_ratio": 0.02,
+      "nominal_tap": 5,
+      "cap_voltage_boost_kv": 0.2
+    }
+  },
   "operations": [
     {
-      "time_us": 200000,
+      "time_us": 0,
       "target_asset_id": "brk",
-      "action_type": "close"
+      "action_type": "close",
+      "parameters": {}
+    },
+    {
+      "time_us": 200000,
+      "target_asset_id": "tap",
+      "action_type": "set_tap",
+      "parameters": {
+        "tap_position": 7
+      }
+    },
+    {
+      "time_us": 300000,
+      "target_asset_id": "cool",
+      "action_type": "start",
+      "parameters": {}
     }
-  ]
+  ],
+  "attacks": [],
+  "recognition": {
+    "enabled": false
+  },
+  "defense": {
+    "enabled": false
+  },
+  "observations": {
+    "schema_path": "../../docs/interfaces/monitoring-event.schema.json",
+    "provider_dir": "../../runs/providers",
+    "mode": "file"
+  },
+  "evaluation": {
+    "mode": "normal"
+  },
+  "references": {
+    "architecture": "docs/架构图依据说明.md"
+  }
 }

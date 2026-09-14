@@ -13,7 +13,7 @@ from sim2030.evaluation import Evaluator
 from sim2030.records import RunReader
 from tests.support import make_observation_event, write_jsonl, write_pipeline_scenario
 
-SUBSTATION_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scenarios", "substation.json")
+SUBSTATION_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "substation.json")
 
 
 class TestReplayEvaluation(unittest.TestCase):
