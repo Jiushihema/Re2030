@@ -1,6 +1,6 @@
 {
-  "scenario_id": "substation-live",
-  "name": "变电站场景",
+  "scenario_id": "substation-em-attack",
+  "name": "变电站电磁攻击场景",
   "observation_mode": "file_replay",
   "seed": 2030,
   "simulation": {
@@ -380,6 +380,40 @@
         "breaker_position": "closed",
         "bus_voltage_kv": 110.0
       }
+    },
+    {
+      "device_id": "em_attack_node",
+      "layout": {"x": 540, "y": 680},
+      "device_type": "em_attack_source",
+      "layer": "process",
+      "name": "电磁攻击节点",
+      "ports": {
+        "emitter": "emitter"
+      },
+      "parameters": {
+        "target_asset_id": "ct_current",
+        "reading_offset": 40.0,
+        "frequency_mhz": 900.0,
+        "power_dbm": 30.0
+      },
+      "initial_state": {
+        "emitting": false
+      }
+    },
+    {
+      "device_id": "spectrum_detect_node",
+      "layout": {"x": 760, "y": 680},
+      "device_type": "spectrum_detector",
+      "layer": "process",
+      "name": "检测节点",
+      "ports": {},
+      "parameters": {
+        "mode": "频谱检测"
+      },
+      "initial_state": {
+        "mode": "频谱检测",
+        "status": "idle"
+      }
     }
   ],
   "links": [
@@ -663,6 +697,19 @@
         "delay_us": 5000,
         "loss_rate": 0.0
       }
+    },
+    {
+      "link_id": "L-em-ct",
+      "endpoint_a": [
+        "em_attack_node",
+        "emitter"
+      ],
+      "endpoint_b": [
+        "ct_current",
+        "up"
+      ],
+      "link_type": "interference",
+      "parameters": {}
     }
   ],
   "operations": [
@@ -677,7 +724,7 @@
       {"key": "external", "title": "外界层 (EXTERNAL LAYER)", "x": 10, "y": 15, "width": 900, "height": 90},
       {"key": "station", "title": "站控层 (STATION LAYER)", "x": 10, "y": 120, "width": 900, "height": 110},
       {"key": "bay", "title": "间隔层 (BAY LAYER)", "x": 10, "y": 250, "width": 900, "height": 130},
-      {"key": "process", "title": "过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)", "x": 10, "y": 400, "width": 900, "height": 250}
+      {"key": "process", "title": "过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)", "x": 10, "y": 400, "width": 900, "height": 360}
     ]
   }
 }

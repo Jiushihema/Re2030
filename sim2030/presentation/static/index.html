@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>国家重点研发计划2030 · 感控系统安全态势大屏</title>
   <link rel="stylesheet" href="/style.css?v=20260914_v5">
 </head>
@@ -124,12 +125,8 @@
         <div class="legend-row">
           <div class="legend-group">
             <span class="legend-group-title">链路定义</span>
-            <div class="legend-chips">
-              <span class="legend-item" title="站内以太网数字通信总线 (MMS/GOOSE/SV)"><span class="legend-line line-wired"></span>站内网络总线</span>
-              <span class="legend-item" title="控制接口至一次设备电磁线圈的硬接线控制回路"><span class="legend-line line-hardwire"></span>控制硬接线</span>
-              <span class="legend-item" title="一次主干回路高压电气主接线"><span class="legend-line line-elec"></span>电气主回路</span>
-              <span class="legend-item" title="变压器本体热传导至油温计的物理接触测量关系"><span class="legend-line line-physical"></span>热传导耦合</span>
-            </div>
+            <!-- 链路类型由当前场景实际存在的链路在脚本中生成 -->
+            <div class="legend-chips" id="legend-links"></div>
           </div>
         </div>
         <div class="legend-row">
@@ -149,6 +146,7 @@
               <span class="legend-item" title="采样值、设备状态、对时同步等数据类报文"><span class="particle-dot data"></span>数据</span>
               <span class="legend-item" title="控制命令、保护动作及设备执行反馈"><span class="particle-dot command"></span>控制交互</span>
               <span class="legend-item" title="未能归类或扩展类型"><span class="particle-dot other"></span>其他</span>
+              <span class="legend-item" id="legend-attack-particle" title="攻击进行时沿电磁干扰链路持续发送的影响信号"><span class="particle-dot attack"></span>影响信号</span>
             </div>
           </div>
           <div class="legend-actions">
@@ -160,9 +158,23 @@
             </select>
           </div>
         </div>
+        <div class="legend-row">
+          <div class="legend-group">
+            <span class="legend-group-title">实际工况（真值）</span>
+            <div class="legend-chips">
+              <span class="legend-item" title="一次侧实际电压真值，不受量测篡改影响">母线电压 <b id="m-actual-v">--</b> kV</span>
+              <span class="legend-item" title="一次侧实际电流真值，不受量测篡改影响">线路电流 <b id="m-actual-i">--</b> A</span>
+              <span class="legend-item" title="线路有功功率（由实际电压、电流换算）">有功功率 <b id="m-actual-p">--</b> MW</span>
+              <span class="legend-item" title="线路无功功率">无功功率 <b id="m-actual-q">--</b> Mvar</span>
+              <span class="legend-item" title="环境温度">环境温度 <b id="m-actual-t">--</b> ℃</span>
+            </div>
+          </div>
+        </div>
       </div>
-        <!-- SVG 拓扑画布 -->
-        <svg id="topo-svg" class="topo-svg" viewBox="0 0 920 620" preserveAspectRatio="xMidYMid meet">
+        <!-- SVG 拓扑画布：可拖动平移，Ctrl+滚轮缩放 -->
+        <div id="topo-viewport" class="topo-viewport">
+        <button type="button" id="zoom-reset" class="legend-btn topo-reset-btn" title="恢复到自动铺满并居中">重置视图</button>
+        <svg id="topo-svg" class="topo-svg" viewBox="0 0 920 780" preserveAspectRatio="xMidYMid meet">
           <defs>
             <linearGradient id="grad-station" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color="#1e293b" />
@@ -180,16 +192,8 @@
           </defs>
 
           <!-- 背景分层标尺与区域背景 -->
-          <g class="topo-layers-bg">
-            <rect x="10" y="15" width="900" height="110" rx="8" class="layer-band band-station"></rect>
-            <text x="25" y="38" class="layer-title">站控层 (STATION LAYER)</text>
-
-            <rect x="10" y="145" width="900" height="130" rx="8" class="layer-band band-bay"></rect>
-            <text x="25" y="168" class="layer-title">间隔层 (BAY LAYER)</text>
-
-            <rect x="10" y="295" width="900" height="310" rx="8" class="layer-band band-process"></rect>
-            <text x="25" y="318" class="layer-title">过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)</text>
-          </g>
+          <!-- 分层背景带由场景版式（layout.layers）在脚本中生成 -->
+          <g id="topo-layers" class="topo-layers-bg"></g>
 
           <!-- 拓扑连接线图层 -->
           <g id="topo-links" class="topo-links-layer"></g>
@@ -200,6 +204,7 @@
           <!-- 拓扑设备节点图层 -->
           <g id="topo-nodes" class="topo-nodes-layer"></g>
         </svg>
+        </div>
       </div>
 
       <!-- 其它TAB视图的展示容器 -->
@@ -231,10 +236,3 @@
   <script src="/app.js?v=20260914_v5"></script>
 </body>
 </html>
-
-
-
-
-
-
-

@@ -11,7 +11,7 @@
 
 | 平面 | 目录 | 当前状态 |
 | --- | --- | --- |
-| 仿真底座 | `sim2030/base/` | 已完成（三层设备、通信、环境、观测接入） |
+| 仿真底座 | `sim2030/base/` | 已完成（四层设备含外界层、通信、环境、观测接入） |
 | 攻击 | `sim2030/attack/` | 已完成（计划解析、到期提交 `EffectRequest`） |
 | 识别 | `sim2030/recognition/` | 已完成（引擎 + 单域/关联检测器接口，规则基线仅用于调通） |
 | 防御 | `sim2030/defense/` | 已完成（策略选择、动作跟踪、恢复判据） |
@@ -40,6 +40,7 @@ Re2030/
 │   └── presentation/         # 演示平面：server.py + views.py + static/(index.html app.js style.css)
 ├── scenarios/substation-live.json      # 变电站长周期运行态势场景
 ├── scenarios/substation-attack-demo.json # 攻防演示场景（攻击→识别→防御→评估闭环）
+├── scenarios/substation-em-attack.json # 电磁攻击场景（电流互感器读数篡改 + 频谱检测节点）
 ├── scenarios/observations/           # 文件回放观测数据（events.jsonl）
 ├── tests/                    # unittest 回归测试
 ├── docs/                     # 设计文档（含接口规范）
@@ -192,7 +193,8 @@ body 示例：
 
 前端 `sim2030/presentation/static/` 已完成态势拓扑页，可直接“双击即跑”，无构建工具：
 
-1. **拓扑图**：内联 SVG 按 `station / bay / process` 三层绘制 15 个设备与 17 条链路；链路端点取自 `topology.links[].endpoint_a[0]` → `endpoint_b[0]`。
+1. **拓扑图**：内联 SVG 按 `external / station / bay / process` 四层绘制 17 个设备与 19 条链路；链路端点取自 `topology.links[].endpoint_a[0]` → `endpoint_b[0]`。
+   “外界层”位于站控层之上：授时卫星（`gnss_sat`）无线接入授时系统，其他电站（`peer_station`）无线接入站端监控。
 2. **设备状态可视**：
    - `effects` 非空 → 红色（受攻击作用影响）
    - 出现在 `recognition[].target_asset_ids / affected_asset_ids` → 琥珀色（疑似异常）
@@ -203,6 +205,15 @@ body 示例：
 5. **设备控制面板**：左侧不再固定下发业务操作，而是按所选设备的可控制项动态显示（例如保护装置阈值、断路器合闸）。
 6. **动态推演**：支持开始/暂停/停止、单步步进、自动推演（1s/步）、历史时刻快照回放。
 7. **tabs 保留**：`system/timeline/observations/recognition/defense/evaluation`。
+8. **版式随场景加载**：节点坐标取设备 `layout`（`{"x","y"}`），分层带取场景 `layout.layers`
+   （`key/title/x/y/width/height`），画布 `viewBox` 由版式外接矩形推导（可用 `layout.canvas` 覆盖）；
+   链路图例只显示本场景实际存在的 `link_type`，"影响信号"图例仅在有 `interference` 链路时出现。
+   设备缺 `layout` 或场景缺 `layout.layers` 时前端自动推导，新增场景无需改前端即可显示。
+   拓扑加载后按 `min(视口/画布)` **自动缩放铺满并居中**，不出现滚动条；左键拖动自由平移（transform
+   实现，与内容是否溢出无关），`Ctrl+滚轮` 以光标为锚点缩放（20%–300%）。
+   “重置视图”按钮固定在拓扑框右上角，只在比例或位置偏离默认（自动铺满 + 居中）时出现。
+   窗口变化且未手动操作过时会自动重新铺满。注意“铺满”取长宽较小比例，画布高度不同的场景比例略有差异
+   （实测 em-attack 92% / live 96%，节点尺寸差约 3%）。
 
 ## 6. 本次交接前的后端改动记录
 
@@ -232,9 +243,17 @@ body 示例：
 
 ## 8. 验证与已知风险
 
-- 验证命令：`D:\python\python.exe -m unittest discover -s tests -t . -v` → `Ran 50 tests ... OK`。
+- 验证命令：`D:\python\python.exe -m unittest discover -s tests -t . -v` → `Ran 61 tests ... OK`。
 - 演示页面已经完成态势拓扑大屏；使用 `substation-attack-demo` 自动推演到约 1.5s 后可见：
   识别疑似异常（tap 琥珀色）→ 防御动作 planned/executing/succeeded → 攻击结束后恢复正常。
 - `substation-live.json` 未启用 `recognition/defense`，`attacks=[]`，用于长周期正常业务态势；
   如需演示告警/攻防闭环，使用 `substation-attack-demo.json`。
+- `substation-em-attack.json` 在 `substation-live` 基础上新增“电磁攻击节点”（`em_attack_node`，红框）
+  与“检测节点”（`spectrum_detect_node`，蓝框，标注“频谱检测”，暂无功能），并用红色虚线干扰链路
+  `L-em-ct` 连接攻击节点与电流互感器；攻击进行时该链路上持续流动红色“影响信号”粒子。
+  攻击为**演示平面手动触发**（点选攻击节点 → “开始攻击”/“结束攻击”，
+  对应 `start_attack`/`stop_attack`），不再按时间自动触发；作用为对 `ct_current` 施加
+  `reading_offset=+40A`，电流采样由约 115A 变为约 155A，结束攻击后恢复。
 - 活动运行的 `time_us` 只在调用 `step` 后前进；纯点“开始”不会自动推进，前端需打开“自动推演步进”或手动单步。
+- 界面自检：`node tools/ui_screenshot.mjs --url http://127.0.0.1:8765/ --scenario <id> --mode attack|none --out shot.png`
+  可无头启动 Edge/Chrome、自动创建运行并截图，脚本同时打印节点/链路/画布/图例/传感器读数用于核对。

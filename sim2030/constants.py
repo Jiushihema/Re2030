@@ -7,6 +7,7 @@ from __future__ import annotations
 
 class Layer:
     """设备所属组织层级（工程功能组织，不限定安装位置）。"""
+    EXTERNAL = "external"
     PROCESS = "process"
     BAY = "bay"
     STATION = "station"
@@ -24,6 +25,8 @@ class LinkType:
     HARDWIRE = "hardwire"
     WIRED = "wired"
     WIRELESS = "wireless"
+    # 电磁干扰耦合：仅表达攻击源与被干扰测点的关系，不走消息投递。
+    INTERFERENCE = "interference"
 
     # 由网络投递的连接类型
     MESSAGE_LINK_TYPES = (HARDWIRE, WIRED, WIRELESS)

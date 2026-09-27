@@ -25,6 +25,8 @@ from sim2030.base.bay import (
     MeasurementControlDevice,
 )
 from sim2030.base.station import StationControlSystem, TimeService
+from sim2030.base.external import RemoteSubstation, TimeSatellite
+from sim2030.base.security import ElectromagneticAttackNode, SpectrumDetectorNode
 from sim2030.base.communication import WirelessTerminal, WirelessGateway
 
 
@@ -57,6 +59,10 @@ DEVICE_TYPES: Dict[str, DeviceFactory] = {
     "station_control": StationControlSystem,
     "station_control_system": StationControlSystem,
     "time_service": TimeService,
+    "time_satellite": TimeSatellite,
+    "remote_substation": RemoteSubstation,
+    "em_attack_source": ElectromagneticAttackNode,
+    "spectrum_detector": SpectrumDetectorNode,
     "wireless_terminal": WirelessTerminal,
     "wireless_gateway": WirelessGateway,
 }
@@ -100,6 +106,7 @@ def load_scenario(path: str) -> ScenarioConfig:
         observations=dict(raw.get("observations", {})),
         evaluation=dict(raw.get("evaluation", {})),
         references=dict(raw.get("references", {})),
+        layout=dict(raw.get("layout", {})),
     )
     return config
 
@@ -133,7 +140,9 @@ def validate_scenario(config: ScenarioConfig) -> List[str]:
             errors.append(f"设备 {device.device_id} 缺少 device_type")
         elif device.device_type not in DEVICE_TYPES:
             errors.append(f"设备 {device.device_id} 类型未知：{device.device_type}")
-        if device.layer and device.layer not in (Layer.PROCESS, Layer.BAY, Layer.STATION, Layer.COMMUNICATION):
+        if device.layer and device.layer not in (
+            Layer.EXTERNAL, Layer.PROCESS, Layer.BAY, Layer.STATION, Layer.COMMUNICATION,
+        ):
             errors.append(f"设备 {device.device_id} 层级未知：{device.layer}")
 
         seen_actions = set()
@@ -154,7 +163,7 @@ def validate_scenario(config: ScenarioConfig) -> List[str]:
             errors.append("连接缺少 link_id")
         if link.link_type not in (
             LinkType.PHYSICAL, LinkType.ELECTRICAL, LinkType.HARDWIRE,
-            LinkType.WIRED, LinkType.WIRELESS,
+            LinkType.WIRED, LinkType.WIRELESS, LinkType.INTERFERENCE,
         ):
             errors.append(f"连接 {link.link_id} 类型未知：{link.link_type}")
             continue
@@ -199,6 +208,7 @@ def validate_scenario(config: ScenarioConfig) -> List[str]:
             errors.append(f"operations[{index}] 动作 {action_type} 不在设备 {target_id} 的能力范围内")
 
     _validate_observation_references(config, errors)
+    _validate_layout(config, errors)
     return errors
 
 
@@ -231,4 +241,35 @@ def _validate_observation_references(config: ScenarioConfig, errors: List[str]) 
     schema_path = observations.get("schema_path")
     if schema_path and isinstance(schema_path, str) and not os.path.exists(schema_path):
         errors.append(f"observations.schema_path 不存在：{schema_path}")
+
+
+def _validate_layout(config: ScenarioConfig, errors: List[str]) -> None:
+    """校验场景自带的拓扑版式：设备坐标与分层带几何必须是数值。"""
+    for device in config.devices:
+        device_layout = device.layout or {}
+        for axis in ("x", "y"):
+            value = device_layout.get(axis)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                errors.append(f"设备 {device.device_id} 的 layout.{axis} 必须是数值")
+
+    layout = config.layout or {}
+    layers = layout.get("layers")
+    if layers is None:
+        return
+    if not isinstance(layers, list):
+        errors.append("layout.layers 必须是数组")
+        return
+    for index, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            errors.append(f"layout.layers[{index}] 必须是对象")
+            continue
+        for key in ("x", "y", "width", "height"):
+            value = layer.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                errors.append(f"layout.layers[{index}].{key} 必须是数值")
+    canvas = layout.get("canvas")
+    if canvas is not None and not isinstance(canvas, dict):
+        errors.append("layout.canvas 必须是对象")
 

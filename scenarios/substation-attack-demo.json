@@ -26,12 +26,14 @@
   "devices": [
     {
       "device_id": "station",
+      "layout": {"x": 280, "y": 160},
       "device_type": "station_control",
       "layer": "station",
       "name": "站端监控系统",
       "ports": {
         "mc_breaker": "mc",
-        "prot": "prot"
+        "prot": "prot",
+        "peer": "peer"
       },
       "parameters": {
         "dispatch": {
@@ -43,6 +45,7 @@
     },
     {
       "device_id": "mc",
+      "layout": {"x": 400, "y": 295},
       "device_type": "measurement_control",
       "layer": "bay",
       "name": "测控装置",
@@ -74,6 +77,7 @@
     },
     {
       "device_id": "prot",
+      "layout": {"x": 180, "y": 295},
       "device_type": "overcurrent_protection",
       "layer": "bay",
       "name": "过流保护装置",
@@ -94,6 +98,7 @@
     },
     {
       "device_id": "ctl_brk",
+      "layout": {"x": 80, "y": 435},
       "device_type": "control_interface",
       "layer": "process",
       "name": "断路器智能终端",
@@ -108,6 +113,7 @@
     },
     {
       "device_id": "ctl_tap",
+      "layout": {"x": 230, "y": 435},
       "device_type": "control_interface",
       "layer": "process",
       "name": "分接机构控制接口",
@@ -122,6 +128,7 @@
     },
     {
       "device_id": "ctl_cool",
+      "layout": {"x": 380, "y": 435},
       "device_type": "control_interface",
       "layer": "process",
       "name": "冷却系统控制接口",
@@ -136,6 +143,7 @@
     },
     {
       "device_id": "brk",
+      "layout": {"x": 80, "y": 585},
       "device_type": "switch",
       "layer": "process",
       "name": "断路器",
@@ -170,6 +178,7 @@
     },
     {
       "device_id": "tap",
+      "layout": {"x": 230, "y": 585},
       "device_type": "transformer",
       "layer": "process",
       "name": "变压器",
@@ -208,6 +217,7 @@
     },
     {
       "device_id": "cool",
+      "layout": {"x": 380, "y": 585},
       "device_type": "auxiliary",
       "layer": "process",
       "name": "冷却风机",
@@ -236,6 +246,7 @@
     },
     {
       "device_id": "comp",
+      "layout": {"x": 790, "y": 435},
       "device_type": "compensation",
       "layer": "process",
       "name": "无功补偿支路",
@@ -264,6 +275,7 @@
     },
     {
       "device_id": "ct_current",
+      "layout": {"x": 650, "y": 585},
       "device_type": "sensor",
       "layer": "process",
       "name": "电流互感器",
@@ -278,6 +290,7 @@
     },
     {
       "device_id": "vt_voltage",
+      "layout": {"x": 790, "y": 585},
       "device_type": "sensor",
       "layer": "process",
       "name": "电压互感器",
@@ -292,6 +305,7 @@
     },
     {
       "device_id": "oil_temp",
+      "layout": {"x": 510, "y": 585},
       "device_type": "sensor",
       "layer": "process",
       "name": "油温传感器",
@@ -307,6 +321,7 @@
     },
     {
       "device_id": "mu",
+      "layout": {"x": 650, "y": 435},
       "device_type": "acquisition",
       "layer": "process",
       "name": "合并单元",
@@ -322,16 +337,56 @@
     },
     {
       "device_id": "time_svc",
+      "layout": {"x": 650, "y": 160},
       "device_type": "time_service",
       "layer": "station",
       "name": "授时系统",
       "ports": {
-        "sync": "sync"
+        "sync": "sync",
+        "gnss": "gnss"
       },
       "parameters": {
         "sync_port": "sync",
         "sync_interval_us": 1000000,
         "time_source": "gnss"
+      }
+    },
+    {
+      "device_id": "gnss_sat",
+      "layout": {"x": 650, "y": 45},
+      "device_type": "time_satellite",
+      "layer": "external",
+      "name": "授时卫星",
+      "ports": {
+        "down": "down"
+      },
+      "parameters": {
+        "down_port": "down",
+        "sync_interval_us": 500000,
+        "constellation": "BDS"
+      },
+      "initial_state": {
+        "signal_state": "locked",
+        "visible_satellites": 8
+      }
+    },
+    {
+      "device_id": "peer_station",
+      "layout": {"x": 280, "y": 45},
+      "device_type": "remote_substation",
+      "layer": "external",
+      "name": "其他电站",
+      "ports": {
+        "down": "down"
+      },
+      "parameters": {
+        "down_port": "down",
+        "heartbeat_interval_us": 1000000
+      },
+      "initial_state": {
+        "grid_state": "normal",
+        "breaker_position": "closed",
+        "bus_voltage_kv": 110.0
       }
     }
   ],
@@ -584,6 +639,38 @@
       "parameters": {
         "delay_us": 200
       }
+    },
+    {
+      "link_id": "L-gnss-time_svc",
+      "endpoint_a": [
+        "gnss_sat",
+        "down"
+      ],
+      "endpoint_b": [
+        "time_svc",
+        "gnss"
+      ],
+      "link_type": "wireless",
+      "parameters": {
+        "delay_us": 20000,
+        "loss_rate": 0.0
+      }
+    },
+    {
+      "link_id": "L-peer-station",
+      "endpoint_a": [
+        "peer_station",
+        "down"
+      ],
+      "endpoint_b": [
+        "station",
+        "peer"
+      ],
+      "link_type": "wireless",
+      "parameters": {
+        "delay_us": 5000,
+        "loss_rate": 0.0
+      }
     }
   ],
   "operations": [],
@@ -625,6 +712,14 @@
         "provider_id": "p-business",
         "source_type": "business"
       }
+    ]
+  },
+  "layout": {
+    "layers": [
+      {"key": "external", "title": "外界层 (EXTERNAL LAYER)", "x": 10, "y": 15, "width": 900, "height": 90},
+      {"key": "station", "title": "站控层 (STATION LAYER)", "x": 10, "y": 120, "width": 900, "height": 110},
+      {"key": "bay", "title": "间隔层 (BAY LAYER)", "x": 10, "y": 250, "width": 900, "height": 130},
+      {"key": "process", "title": "过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)", "x": 10, "y": 400, "width": 900, "height": 250}
     ]
   }
 }

@@ -142,6 +142,27 @@ class SimulationEngine:
         )
         return {"effect_id": request.effect_id, "status": "accepted", "reason": ""}
 
+    def clear_effect(self, effect_id: str) -> Dict[str, Any]:
+        """按 ``effect_id`` 撤销已登记的作用，并立即清理其目标影响。
+
+        供演示平面的手动攻击“结束攻击”使用；不影响其他仍在活动的作用。
+        """
+        remaining = [effect for effect in self._active_effects if effect["effect_id"] != effect_id]
+        if len(remaining) == len(self._active_effects):
+            return {"effect_id": effect_id, "status": "not_found"}
+        self._active_effects = remaining
+
+        still_targeted = {effect["target_id"] for effect in self._active_effects}
+        for kind, target in list(self._applied_effects):
+            if target in still_targeted:
+                continue
+            if kind == "device" and target in self._devices:
+                self._devices[target].set_effects({})
+            elif kind == "link" and self._network is not None:
+                self._network.set_link_effect(target, {})
+            self._applied_effects.discard((kind, target))
+        return {"effect_id": effect_id, "status": "cleared"}
+
     def _network_is_link(self, target_id: str) -> bool:
         return self._network is not None and target_id in self._network._links
 
@@ -161,6 +182,10 @@ class SimulationEngine:
 
     def get_capabilities(self, target_ids: List[str]) -> Dict[str, List[Capability]]:
         return {tid: self._devices[tid].capabilities() for tid in target_ids if tid in self._devices}
+
+    def get_device(self, device_id: str) -> Optional[Device]:
+        """按标识返回底座设备实例；不存在时返回 ``None``。"""
+        return self._devices.get(device_id)
 
     def get_device_controls(self, device_id: str) -> Dict[str, Any]:
         """返回单台设备在演示平面可用的控制/调节项描述。"""
