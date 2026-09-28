@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <title>国家重点研发计划2030 · 感控系统安全态势大屏</title>
-  <link rel="stylesheet" href="/style.css?v=20260914_v5">
+  <link rel="stylesheet" href="/style.css?v=20260928_v2">
 </head>
 <body>
   <!-- 顶部状态栏 -->
@@ -233,6 +233,27 @@
     </aside>
   </main>
 
-  <script src="/app.js?v=20260914_v5"></script>
+  <!-- 内部报文详情：仅展示 Message.to_record() 的真实字段 -->
+  <div id="packet-inspector" class="packet-inspector" aria-hidden="true">
+    <div class="packet-inspector-backdrop" data-packet-close="1"></div>
+    <section class="packet-inspector-panel" role="dialog" aria-modal="true" aria-labelledby="packet-inspector-title">
+      <header class="packet-inspector-header">
+        <div>
+          <div class="packet-inspector-kicker">运行期通信队列</div>
+          <h2 id="packet-inspector-title">内部报文（Message）</h2>
+        </div>
+        <button type="button" id="packet-inspector-close" class="packet-inspector-close" aria-label="关闭报文详情">×</button>
+      </header>
+      <div class="packet-inspector-notice">仅展示后端真实存在的 Message 字段，不代表原始 IEC 61850 / SV 线路帧。</div>
+      <div id="packet-inspector-body" class="packet-inspector-body"></div>
+      <footer class="packet-inspector-footer">
+        <span id="packet-inspector-copy-status" class="packet-inspector-copy-status" aria-live="polite"></span>
+        <button type="button" id="packet-inspector-copy" class="packet-inspector-copy">复制 JSON</button>
+      </footer>
+    </section>
+  </div>
+  <div id="packet-inspector-toast" class="packet-inspector-toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js?v=20260928_v2"></script>
 </body>
 </html>

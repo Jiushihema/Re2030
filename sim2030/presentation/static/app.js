@@ -64,6 +64,107 @@ function formatUs(us) {
   return (us / 1000000).toFixed(3) + " s";
 }
 
+let packetToastTimer = null;
+
+function packetFieldValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return value;
+}
+
+function formatPacketPayload(payload) {
+  try {
+    return JSON.stringify(payload || {}, null, 2);
+  } catch (err) {
+    return String(payload ?? "");
+  }
+}
+
+function showPacketToast(text) {
+  const toast = $("#packet-inspector-toast");
+  if (!toast) return;
+  toast.textContent = text;
+  toast.classList.add("show");
+  window.clearTimeout(packetToastTimer);
+  packetToastTimer = window.setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+function openPacketInspector(message) {
+  const inspector = $("#packet-inspector");
+  const body = $("#packet-inspector-body");
+  const copyStatus = $("#packet-inspector-copy-status");
+  if (!inspector || !body || !message) return;
+
+  const rawJson = JSON.stringify(message, null, 2);
+  inspector.dataset.rawJson = rawJson;
+  if (copyStatus) copyStatus.textContent = "";
+
+  const fields = [
+    ["报文 ID", message.message_id],
+    ["发送方", message.sender_id],
+    ["接收方", message.receiver_id],
+    ["业务类型", message.business_type],
+    ["源端口", message.source_port],
+    ["目标端口", message.target_port],
+    ["关联请求", message.related_request],
+    ["创建时间", formatUs(message.created_time_us)],
+    ["送达时间", formatUs(message.deliver_time_us)],
+  ];
+
+  body.innerHTML = `
+    <div class="packet-field-list">
+      ${fields.map(([label, value]) => `
+        <div class="packet-field">
+          <span class="packet-field-label">${esc(label)}</span>
+          <code class="packet-field-value">${esc(packetFieldValue(value))}</code>
+        </div>
+      `).join("")}
+    </div>
+    <div class="packet-payload-section">
+      <div class="packet-payload-title">payload（业务载荷）</div>
+      <pre class="packet-payload-json">${esc(formatPacketPayload(message.payload))}</pre>
+    </div>
+  `;
+
+  inspector.classList.add("open");
+  inspector.setAttribute("aria-hidden", "false");
+  document.body.classList.add("packet-inspector-open");
+  const closeButton = $("#packet-inspector-close");
+  if (closeButton) closeButton.focus();
+}
+
+function closePacketInspector() {
+  const inspector = $("#packet-inspector");
+  if (!inspector) return;
+  inspector.classList.remove("open");
+  inspector.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("packet-inspector-open");
+}
+
+async function copyPacketJson() {
+  const inspector = $("#packet-inspector");
+  const status = $("#packet-inspector-copy-status");
+  const raw = inspector?.dataset.rawJson || "";
+  if (!raw) return;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(raw);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = raw;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    if (status) status.textContent = "已复制";
+  } catch (err) {
+    if (status) status.textContent = "复制失败";
+  }
+}
+
 function particleCategory(businessType) {
   if (businessType === "sampling" || businessType === "status" || businessType === "sync") return "data";
   if (businessType === "command" || businessType === "protection" || businessType === "feedback") return "command";
@@ -108,7 +209,7 @@ async function createRun() {
   state.renderedTopologyOnce = false;
   $("#run-id").textContent = payload.run_id;
   setStatus(`运行已创建：${payload.run_id}`);
-  
+
   startPolling();
   await refreshViews();
 }
@@ -1114,18 +1215,46 @@ function renderTopology(data) {
 
 /* 粒子生命周期与平滑插值管理器：基于唯一 message_id 追踪生命周期，杜绝步进突变跳动 */
 const particleMap = new Map();
+const packetMessageMap = new Map();
+const particleNodeMap = new Map();
 const interferenceParticles = new Map();
 let animFrameId = null;
+
+function removeParticleNode(key) {
+  const node = particleNodeMap.get(key);
+  if (node) {
+    node.remove();
+    particleNodeMap.delete(key);
+  }
+}
+
+function clearParticleNodes() {
+  particleNodeMap.forEach((node) => node.remove());
+  particleNodeMap.clear();
+}
+
+function ensureParticleNode(packetLayer, key, category, radius) {
+  let node = particleNodeMap.get(key);
+  if (!node) {
+    node = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    packetLayer.appendChild(node);
+    particleNodeMap.set(key, node);
+  }
+  node.setAttribute("r", radius);
+  node.setAttribute("class", `msg-particle ${category}`);
+  return node;
+}
 
 function animateParticles(now) {
   const packetLayer = $("#topo-packets");
   if (packetLayer) {
-    // 渲染存活的粒子
+    // 每帧只更新持久节点，避免点击目标在 pointerdown 与 click 之间被销毁。
     const toDelete = [];
-    let frag = document.createDocumentFragment();
+    const activeNodeKeys = new Set();
 
     particleMap.forEach((p, id) => {
       if (state.particleFilter !== "all" && p.category !== state.particleFilter) return;
+
       const elapsed = now - p.birthTime;
       const progress = Math.min(elapsed / p.duration, 1.0);
 
@@ -1149,30 +1278,39 @@ function animateParticles(now) {
       if (progress < 0.15) opacity = progress / 0.15;
       else if (progress > 0.85) opacity = (1.0 - progress) / 0.15;
 
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      const nodeKey = `msg:${id}`;
+      activeNodeKeys.add(nodeKey);
+      const circle = ensureParticleNode(packetLayer, nodeKey, p.category, "4.5");
       circle.setAttribute("cx", curX.toFixed(1));
       circle.setAttribute("cy", curY.toFixed(1));
-      circle.setAttribute("r", "4.5");
-      circle.setAttribute("class", `msg-particle ${p.category}`);
+      if (p.messageId && packetMessageMap.has(p.messageId)) {
+        circle.setAttribute("data-message-id", p.messageId);
+      } else {
+        circle.removeAttribute("data-message-id");
+      }
       circle.setAttribute("opacity", opacity.toFixed(2));
-      frag.appendChild(circle);
     });
 
     // 攻击影响信号：攻击进行时沿电磁干扰链路持续流动（不受报文过滤器影响）
-    interferenceParticles.forEach((p) => {
+    interferenceParticles.forEach((p, key) => {
       const progress = ((now - p.birthTime) / p.duration + p.offset) % 1.0;
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      const nodeKey = `ifx:${key}`;
+      activeNodeKeys.add(nodeKey);
+      const circle = ensureParticleNode(packetLayer, nodeKey, "attack", "4.2");
       circle.setAttribute("cx", (p.x1 + (p.x2 - p.x1) * progress).toFixed(1));
       circle.setAttribute("cy", (p.y1 + (p.y2 - p.y1) * progress).toFixed(1));
-      circle.setAttribute("r", "4.2");
-      circle.setAttribute("class", "msg-particle attack");
+      circle.removeAttribute("data-message-id");
       circle.setAttribute("opacity", "0.92");
-      frag.appendChild(circle);
     });
 
-    toDelete.forEach((id) => particleMap.delete(id));
-    packetLayer.innerHTML = "";
-    packetLayer.appendChild(frag);
+    toDelete.forEach((id) => {
+      particleMap.delete(id);
+      packetMessageMap.delete(id);
+      removeParticleNode(`msg:${id}`);
+    });
+    Array.from(particleNodeMap.keys()).forEach((key) => {
+      if (!activeNodeKeys.has(key)) removeParticleNode(key);
+    });
   }
 
   animFrameId = requestAnimationFrame(animateParticles);
@@ -1187,8 +1325,9 @@ function updatePacketFlow(data) {
   // 系统终止/停止或回放结束：彻底清理在途报文粒子，杜绝幽灵粒子传递
   if (data.status === "finished" || data.status === "stopped") {
     particleMap.clear();
-    const packetLayer = $("#topo-packets");
-    if (packetLayer) packetLayer.innerHTML = "";
+    packetMessageMap.clear();
+    interferenceParticles.clear();
+    clearParticleNodes();
     return;
   }
 
@@ -1197,8 +1336,11 @@ function updatePacketFlow(data) {
   const now = performance.now();
 
   inFlights.slice(0, 24).forEach((msg, idx) => {
-    const id = msg.message_id || `${msg.sender_id}->${msg.receiver_id}`;
+    const messageId = msg.message_id || "";
+    const id = messageId || `${msg.sender_id}->${msg.receiver_id}`;
     incomingIds.add(id);
+
+    if (messageId) packetMessageMap.set(messageId, msg);
 
     // 如果该报文已在航线中，仅更新状态，绝对不重置 birthTime，确保运动连续
     if (particleMap.has(id)) {
@@ -1214,6 +1356,7 @@ function updatePacketFlow(data) {
 
     particleMap.set(id, {
       id: id,
+      messageId: messageId,
       x1: src.x + 45,
       y1: src.y + 24,
       x2: dst.x + 45,
@@ -1738,12 +1881,43 @@ function bindEvents() {
     updateAutoStep(e.target.checked);
   });
 
+  const packetLayer = $("#topo-packets");
+  if (packetLayer) {
+    packetLayer.addEventListener("click", (event) => {
+      if (state.dragMoved) return;
+      const particle = event.target.closest && event.target.closest("[data-message-id]");
+      if (!particle) return;
+      const message = packetMessageMap.get(particle.getAttribute("data-message-id"));
+      if (!message) return;
+      event.stopPropagation();
+      openPacketInspector(message);
+    });
+  }
+
+  const packetInspector = $("#packet-inspector");
+  if (packetInspector) {
+    const closeButton = $("#packet-inspector-close");
+    if (closeButton) closeButton.addEventListener("click", closePacketInspector);
+    document.querySelectorAll("[data-packet-close]").forEach((node) => {
+      node.addEventListener("click", closePacketInspector);
+    });
+    const copyButton = $("#packet-inspector-copy");
+    if (copyButton) copyButton.addEventListener("click", copyPacketJson);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePacketInspector();
+  });
+
   const particleFilter = $("#particle-filter");
   if (particleFilter) {
     particleFilter.addEventListener("change", (e) => {
       state.particleFilter = e.target.value;
-      const packetLayer = $("#topo-packets");
-      if (packetLayer) packetLayer.innerHTML = "";
+      particleMap.forEach((particle, id) => {
+        if (state.particleFilter !== "all" && particle.category !== state.particleFilter) {
+          removeParticleNode(`msg:${id}`);
+        }
+      });
     });
   }
 

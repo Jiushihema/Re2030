@@ -564,19 +564,15 @@ class Application:
     # ──────────────────────────────────────────────
     # 内部方法：展示视图
     # ──────────────────────────────────────────────
+    def _in_flight_messages(self) -> List[Dict[str, Any]]:
+        """Return the complete in-flight internal messages for the packet inspector."""
+        if self.engine is None or not hasattr(self.engine, "_network"):
+            return []
+        return [item[2].to_record() for item in self.engine._network._queue]
+
     def _summary(self) -> Dict[str, Any]:
-                # 提取在途报文流
-        in_flight_messages = []
-        if self.engine is not None and hasattr(self.engine, "_network"):
-            for item in self.engine._network._queue:
-                msg = item[2]
-                in_flight_messages.append({
-                    "message_id": msg.message_id,
-                    "sender_id": msg.sender_id,
-                    "receiver_id": msg.receiver_id,
-                    "business_type": msg.business_type,
-                    "deliver_time_us": msg.deliver_time_us,
-                })
+        # 提取在途报文流
+        in_flight_messages = self._in_flight_messages()
 
         # 提取全站环境物理量
         environment = {}
@@ -611,17 +607,7 @@ class Application:
                     "layout": device.layout,
                 })
                 # 提取在途报文流
-        in_flight_messages = []
-        if self.engine is not None and hasattr(self.engine, "_network"):
-            for item in self.engine._network._queue:
-                msg = item[2]
-                in_flight_messages.append({
-                    "message_id": msg.message_id,
-                    "sender_id": msg.sender_id,
-                    "receiver_id": msg.receiver_id,
-                    "business_type": msg.business_type,
-                    "deliver_time_us": msg.deliver_time_us,
-                })
+        in_flight_messages = self._in_flight_messages()
 
         # 提取全站环境物理量
         environment = {}
@@ -646,18 +632,8 @@ class Application:
         }
 
     def _timeline_view(self) -> Dict[str, Any]:
-                # 提取在途报文流
-        in_flight_messages = []
-        if self.engine is not None and hasattr(self.engine, "_network"):
-            for item in self.engine._network._queue:
-                msg = item[2]
-                in_flight_messages.append({
-                    "message_id": msg.message_id,
-                    "sender_id": msg.sender_id,
-                    "receiver_id": msg.receiver_id,
-                    "business_type": msg.business_type,
-                    "deliver_time_us": msg.deliver_time_us,
-                })
+        # 提取在途报文流
+        in_flight_messages = self._in_flight_messages()
 
         # 提取全站环境物理量
         environment = {}

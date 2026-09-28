@@ -15,7 +15,7 @@
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  
+
   --accent-cyan: #06b6d4;
   --accent-blue: #3b82f6;
   --accent-green: #10b981;
@@ -1152,7 +1152,17 @@ body {
 .msg-particle {
   fill: #64748b;
   filter: drop-shadow(0 0 3px #64748b);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.msg-particle:not([data-message-id]) {
   pointer-events: none;
+  cursor: default;
+}
+.msg-particle[data-message-id]:hover,
+.msg-particle[data-message-id]:active {
+  stroke: #f8fafc;
+  stroke-width: 1.6px;
 }
 .msg-particle.data {
   fill: #22c55e;
@@ -1169,6 +1179,7 @@ body {
 .msg-particle.attack {
   fill: #ef4444;
   filter: drop-shadow(0 0 6px #ef4444);
+  pointer-events: none;
 }
 
 .particle-dot {
@@ -1334,4 +1345,229 @@ body {
   padding: 28px 12px;
   border: 1px dashed var(--border-color);
   border-radius: 6px;
+}
+
+/* 内部报文详情弹窗：仅展示后端运行的 Message 队列内容 */
+body.packet-inspector-open {
+  overflow: hidden;
+}
+
+.packet-inspector {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+}
+
+.packet-inspector.open {
+  display: block;
+}
+
+.packet-inspector-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.76);
+  backdrop-filter: blur(4px);
+}
+
+.packet-inspector-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(180deg, #101d31 0%, #0b1526 100%);
+  border: 1px solid #2563eb;
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.72), 0 0 24px rgba(6, 182, 212, 0.12);
+  animation: packet-panel-in 160ms ease-out;
+}
+
+@keyframes packet-panel-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.packet-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.packet-inspector-kicker {
+  margin-bottom: 4px;
+  color: var(--accent-cyan);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.packet-inspector-header h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 17px;
+}
+
+.packet-inspector-close {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.packet-inspector-close:hover,
+.packet-inspector-close:focus-visible {
+  border-color: var(--accent-cyan);
+  color: #fff;
+  outline: none;
+}
+
+.packet-inspector-notice {
+  margin: 0;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(6, 182, 212, 0.07);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.packet-inspector-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.packet-field-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.packet-field {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+
+.packet-field-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.packet-field-value {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #dbeafe;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.packet-payload-section {
+  margin-top: 14px;
+}
+
+.packet-payload-title {
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.packet-payload-json {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: #07101f;
+  color: #a7f3d0;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.packet-inspector-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.packet-inspector-copy-status {
+  min-width: 54px;
+  color: var(--accent-green);
+  font-size: 12px;
+  text-align: right;
+}
+
+.packet-inspector-copy {
+  padding: 7px 14px;
+  border: 1px solid #0891b2;
+  border-radius: 6px;
+  background: rgba(6, 182, 212, 0.14);
+  color: #a5f3fc;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.packet-inspector-copy:hover,
+.packet-inspector-copy:focus-visible {
+  background: rgba(6, 182, 212, 0.28);
+  outline: none;
+}
+
+.packet-inspector-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 1100;
+  padding: 8px 14px;
+  border: 1px solid rgba(6, 182, 212, 0.55);
+  border-radius: 999px;
+  background: rgba(8, 47, 73, 0.96);
+  color: #cffafe;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.packet-inspector-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 680px) {
+  .packet-field-list {
+    grid-template-columns: 1fr;
+  }
+
+  .packet-inspector-panel {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 24px);
+  }
 }
