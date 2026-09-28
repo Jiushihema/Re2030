@@ -13,6 +13,7 @@ const state = {
   renderedTopologyOnce: false,
   renderedRunId: null,
   particleFilter: "all",
+  selectedPacketMessageId: null,
   zoom: 1,
   fitZoom: 0,
   canvasSize: null,
@@ -97,6 +98,8 @@ function openPacketInspector(message) {
   const rawJson = JSON.stringify(message, null, 2);
   inspector.dataset.rawJson = rawJson;
   if (copyStatus) copyStatus.textContent = "";
+  state.selectedPacketMessageId = message.message_id || null;
+  syncPacketSelection();
 
   const fields = [
     ["报文 ID", message.message_id],
@@ -135,6 +138,8 @@ function openPacketInspector(message) {
 function closePacketInspector() {
   const inspector = $("#packet-inspector");
   if (!inspector) return;
+  state.selectedPacketMessageId = null;
+  syncPacketSelection();
   inspector.classList.remove("open");
   inspector.setAttribute("aria-hidden", "true");
   document.body.classList.remove("packet-inspector-open");
@@ -1236,13 +1241,50 @@ function clearParticleNodes() {
 function ensureParticleNode(packetLayer, key, category, radius) {
   let node = particleNodeMap.get(key);
   if (!node) {
-    node = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    node = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    node.setAttribute("class", "msg-particle-group");
+    node.setAttribute("role", "button");
+
+    const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    hit.setAttribute("class", "msg-particle-hit");
+    hit.setAttribute("r", "22");
+    node.appendChild(hit);
+
+    const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    halo.setAttribute("class", "msg-particle-halo");
+    halo.setAttribute("r", "11");
+    node.appendChild(halo);
+
+    const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    particle.setAttribute("class", "msg-particle");
+    particle.setAttribute("r", radius);
+    node.appendChild(particle);
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("class", "msg-particle-label");
+    label.setAttribute("x", "0");
+    label.setAttribute("y", "-17");
+    label.setAttribute("text-anchor", "middle");
+    label.textContent = "点击查看报文";
+    node.appendChild(label);
+
     packetLayer.appendChild(node);
     particleNodeMap.set(key, node);
   }
-  node.setAttribute("r", radius);
-  node.setAttribute("class", `msg-particle ${category}`);
+  node.setAttribute("class", `msg-particle-group ${category}`);
+  const particle = node.querySelector(".msg-particle");
+  if (particle) particle.setAttribute("r", radius);
   return node;
+}
+
+function syncPacketSelection() {
+  particleNodeMap.forEach((node) => {
+    const messageId = node.getAttribute("data-message-id");
+    const isSelected = Boolean(messageId) && messageId === state.selectedPacketMessageId;
+    node.classList.toggle("selected", isSelected);
+    if (messageId) node.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    else node.removeAttribute("aria-pressed");
+  });
 }
 
 function animateParticles(now) {
@@ -1280,15 +1322,20 @@ function animateParticles(now) {
 
       const nodeKey = `msg:${id}`;
       activeNodeKeys.add(nodeKey);
-      const circle = ensureParticleNode(packetLayer, nodeKey, p.category, "4.5");
-      circle.setAttribute("cx", curX.toFixed(1));
-      circle.setAttribute("cy", curY.toFixed(1));
+      const group = ensureParticleNode(packetLayer, nodeKey, p.category, "4.5");
+      group.setAttribute("transform", `translate(${curX.toFixed(1)} ${curY.toFixed(1)})`);
       if (p.messageId && packetMessageMap.has(p.messageId)) {
-        circle.setAttribute("data-message-id", p.messageId);
+        group.setAttribute("data-message-id", p.messageId);
+        group.setAttribute("aria-label", `查看报文 ${p.messageId}`);
       } else {
-        circle.removeAttribute("data-message-id");
+        group.removeAttribute("data-message-id");
+        group.removeAttribute("aria-label");
       }
-      circle.setAttribute("opacity", opacity.toFixed(2));
+      group.setAttribute("opacity", opacity.toFixed(2));
+      const isSelected = Boolean(p.messageId) && p.messageId === state.selectedPacketMessageId;
+      group.classList.toggle("selected", isSelected);
+      if (p.messageId) group.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      else group.removeAttribute("aria-pressed");
     });
 
     // 攻击影响信号：攻击进行时沿电磁干扰链路持续流动（不受报文过滤器影响）
@@ -1296,11 +1343,15 @@ function animateParticles(now) {
       const progress = ((now - p.birthTime) / p.duration + p.offset) % 1.0;
       const nodeKey = `ifx:${key}`;
       activeNodeKeys.add(nodeKey);
-      const circle = ensureParticleNode(packetLayer, nodeKey, "attack", "4.2");
-      circle.setAttribute("cx", (p.x1 + (p.x2 - p.x1) * progress).toFixed(1));
-      circle.setAttribute("cy", (p.y1 + (p.y2 - p.y1) * progress).toFixed(1));
-      circle.removeAttribute("data-message-id");
-      circle.setAttribute("opacity", "0.92");
+      const group = ensureParticleNode(packetLayer, nodeKey, "attack", "4.2");
+      const ifxX = (p.x1 + (p.x2 - p.x1) * progress).toFixed(1);
+      const ifxY = (p.y1 + (p.y2 - p.y1) * progress).toFixed(1);
+      group.setAttribute("transform", `translate(${ifxX} ${ifxY})`);
+      group.removeAttribute("data-message-id");
+      group.removeAttribute("aria-label");
+      group.removeAttribute("aria-pressed");
+      group.classList.remove("selected");
+      group.setAttribute("opacity", "0.92");
     });
 
     toDelete.forEach((id) => {

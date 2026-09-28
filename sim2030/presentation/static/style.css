@@ -1148,38 +1148,66 @@ body {
   color: var(--text-secondary);
 }
 
-/* 报文流粒子动画 */
-.msg-particle {
-  fill: #64748b;
-  filter: drop-shadow(0 0 3px #64748b);
-  pointer-events: auto;
+/* 报文流粒子动画：大点击热区 + 悬停/选中反馈 */
+.msg-particle-group {
+  color: #64748b;
+  pointer-events: none;
+}
+.msg-particle-group.data { color: #22c55e; }
+.msg-particle-group.command { color: #f59e0b; }
+.msg-particle-group.attack { color: #ef4444; }
+.msg-particle-group[data-message-id] {
   cursor: pointer;
+  pointer-events: visiblePainted;
 }
-.msg-particle:not([data-message-id]) {
+.msg-particle-hit {
+  fill: transparent;
+  stroke: transparent;
   pointer-events: none;
-  cursor: default;
 }
-.msg-particle[data-message-id]:hover,
-.msg-particle[data-message-id]:active {
+.msg-particle-group[data-message-id] .msg-particle-hit {
+  pointer-events: all;
+}
+.msg-particle-halo {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+.msg-particle {
+  fill: currentColor;
+  filter: drop-shadow(0 0 5px currentColor);
+  pointer-events: none;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+.msg-particle-label {
+  fill: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(2, 6, 23, 0.96);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.msg-particle-group[data-message-id]:hover .msg-particle-halo,
+.msg-particle-group[data-message-id].selected .msg-particle-halo {
   stroke: #f8fafc;
-  stroke-width: 1.6px;
+  stroke-width: 2.2px;
+  opacity: 0.96;
 }
-.msg-particle.data {
-  fill: #22c55e;
-  filter: drop-shadow(0 0 5px #22c55e);
+.msg-particle-group[data-message-id]:hover .msg-particle,
+.msg-particle-group[data-message-id].selected .msg-particle {
+  stroke: #f8fafc;
+  stroke-width: 1.5px;
 }
-.msg-particle.command {
-  fill: #f59e0b;
-  filter: drop-shadow(0 0 5px #f59e0b);
-}
-.msg-particle.other {
-  fill: #64748b;
-  filter: drop-shadow(0 0 3px #64748b);
-}
-.msg-particle.attack {
-  fill: #ef4444;
-  filter: drop-shadow(0 0 6px #ef4444);
-  pointer-events: none;
+.msg-particle-group[data-message-id]:hover .msg-particle-label,
+.msg-particle-group[data-message-id].selected .msg-particle-label {
+  opacity: 1;
 }
 
 .particle-dot {
