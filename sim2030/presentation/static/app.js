@@ -1224,6 +1224,9 @@ const packetMessageMap = new Map();
 const particleNodeMap = new Map();
 const interferenceParticles = new Map();
 let animFrameId = null;
+/* 动画时钟：只在仿真运行时推进，暂停/结束后冻结，报文圆点停在原处便于点击 */
+let animClock = 0;
+let animLastFrame = 0;
 
 function removeParticleNode(key) {
   const node = particleNodeMap.get(key);
@@ -1288,6 +1291,13 @@ function syncPacketSelection() {
 }
 
 function animateParticles(now) {
+  // 时钟只在运行中前进：暂停时针停住，报文圆点冻结在暂停那一刻的位置
+  const delta = animLastFrame ? Math.min(now - animLastFrame, 200) : 0;
+  animLastFrame = now;
+  const isRunning = state.systemData?.status === "running";
+  if (isRunning) animClock += delta;
+  const clock = animClock;
+
   const packetLayer = $("#topo-packets");
   if (packetLayer) {
     // 每帧只更新持久节点，避免点击目标在 pointerdown 与 click 之间被销毁。
@@ -1297,7 +1307,7 @@ function animateParticles(now) {
     particleMap.forEach((p, id) => {
       if (state.particleFilter !== "all" && p.category !== state.particleFilter) return;
 
-      const elapsed = now - p.birthTime;
+      const elapsed = clock - p.birthTime;
       const progress = Math.min(elapsed / p.duration, 1.0);
 
       // 报文已到达或被移除且已走完路径
@@ -1305,9 +1315,9 @@ function animateParticles(now) {
         if (p.isDead) {
           toDelete.push(id);
           return;
-        } else {
-          // 若仍在传输队列中，循环继续推进流动
-          p.birthTime = now;
+        } else if (isRunning) {
+          // 若仍在传输队列中，运行中循环继续推进流动；暂停时停在终点
+          p.birthTime = clock;
         }
       }
 
@@ -1340,7 +1350,7 @@ function animateParticles(now) {
 
     // 攻击影响信号：攻击进行时沿电磁干扰链路持续流动（不受报文过滤器影响）
     interferenceParticles.forEach((p, key) => {
-      const progress = ((now - p.birthTime) / p.duration + p.offset) % 1.0;
+      const progress = ((clock - p.birthTime) / p.duration + p.offset) % 1.0;
       const nodeKey = `ifx:${key}`;
       activeNodeKeys.add(nodeKey);
       const group = ensureParticleNode(packetLayer, nodeKey, "attack", "4.2");
@@ -1382,9 +1392,11 @@ function updatePacketFlow(data) {
     return;
   }
 
+  // 暂停时不增删报文粒子，保持暂停那一刻的画面，方便点击在途报文
+  if (data.status !== "running") return;
+
   const inFlights = data.in_flight_messages || [];
   const incomingIds = new Set();
-  const now = performance.now();
 
   inFlights.slice(0, 24).forEach((msg, idx) => {
     const messageId = msg.message_id || "";
@@ -1414,7 +1426,7 @@ function updatePacketFlow(data) {
       y2: dst.y + 24,
       businessType: msg.business_type || "unknown",
       category: particleCategory(msg.business_type || "unknown"),
-      birthTime: now,
+      birthTime: animClock,
       duration: 1100, // 约1.1秒平滑穿越
       isDead: false,
     });
@@ -1447,7 +1459,6 @@ function updateInterferenceFlow(data) {
 
   const mgmt = data.management || {};
   const links = (data.topology || {}).links || [];
-  const now = performance.now();
   const wanted = new Set();
 
   links.forEach((link) => {
@@ -1477,7 +1488,7 @@ function updateInterferenceFlow(data) {
           x2: dst.x + 45,
           y2: dst.y + 24,
           offset: i / count,
-          birthTime: now,
+          birthTime: animClock,
           duration: 1400,
         });
       }
