@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <title>国家重点研发计划2030 · 感控系统安全态势大屏</title>
-  <link rel="stylesheet" href="/style.css?v=20260929_v2">
+  <link rel="stylesheet" href="/style.css?v=20260929_v3">
 </head>
 <body>
   <!-- 顶部状态栏 -->
@@ -127,7 +127,7 @@
             <span class="legend-group-title">链路定义</span>
             <!-- 链路类型由当前场景实际存在的链路在脚本中生成 -->
             <div class="legend-chips" id="legend-links"></div>
-            <span class="legend-item" title="中央通信总线承载各层报文，每个逻辑层通过独立网关接入"><span class="legend-bus-symbol"></span>中央通信总线 + 分层网关</span>
+            <span class="legend-item" title="每层 bar 内部各有一条通信总线，层内总线通过外侧网关引出"><span class="legend-bus-symbol"></span>层内通信总线 + 外侧网关</span>
           </div>
         </div>
         <div class="legend-row">
@@ -196,10 +196,10 @@
           <!-- 分层背景带由场景版式（layout.layers）在脚本中生成 -->
           <g id="topo-layers" class="topo-layers-bg"></g>
 
-          <!-- 中央通信总线图层：纵向主干 + 各层横向接入轨 -->
+          <!-- 层内通信总线图层：位于各层大 bar 中部 -->
           <g id="topo-bus" class="topo-bus-layer"></g>
 
-          <!-- 原有点对点链路图层：总线模式下保持为空 -->
+          <!-- 真实点对点链路图层：层内与层间链路始终保留 -->
           <g id="topo-links" class="topo-links-layer"></g>
 
           <!-- 报文流粒子动画图层 -->
@@ -208,7 +208,7 @@
           <!-- 拓扑设备节点图层 -->
           <g id="topo-nodes" class="topo-nodes-layer"></g>
 
-          <!-- 每层网关位于中央总线右侧并接入对应层 -->
+          <!-- 每层外侧网关：从本层层内总线引出 -->
           <g id="topo-gateways" class="topo-gateways-layer"></g>
         </svg>
         </div>
@@ -261,6 +261,6 @@
   </div>
   <div id="packet-inspector-toast" class="packet-inspector-toast" role="status" aria-live="polite"></div>
 
-  <script src="/app.js?v=20260929_v2"></script>
+  <script src="/app.js?v=20260929_v3"></script>
 </body>
 </html>

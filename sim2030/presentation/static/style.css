@@ -902,61 +902,47 @@ body {
   font-weight: 600;
 }
 
-/* 中央通信总线：各层通过独立网关接入，原有点对点连线不渲染 */
+/* 每层内通信总线：总线位于该层 bar 中部，外侧网关从总线右端引出；真实链路另行渲染 */
 .topo-bus-layer,
 .topo-gateways-layer {
   pointer-events: none;
 }
 
-.topo-layer-rail {
-  stroke: rgba(34, 211, 238, 0.58);
-  stroke-width: 2.2;
+.topo-layer-bus {
+  stroke: rgba(34, 211, 238, 0.28);
+  stroke-width: 8;
   fill: none;
-  filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.62));
 }
 
+.topo-layer-bus-flow {
+  stroke: #22d3ee;
+  stroke-width: 2.2;
+  stroke-dasharray: 9 7;
+  fill: none;
+  filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.68));
+  animation: topo-layer-bus-flow 1.8s linear infinite;
+}
+
+.topo-layer-bus-cap,
 .topo-layer-junction {
   fill: #0b1f3a;
   stroke: #67e8f9;
   stroke-width: 1.6;
 }
 
-.gateway-port-end {
-  fill: #0b1f3a;
-}
-
-.topo-bus-rail {
-  stroke: rgba(34, 211, 238, 0.3);
-  stroke-width: 8;
-  fill: none;
-}
-
-.topo-bus-flow {
-  stroke: #22d3ee;
-  stroke-width: 2.4;
-  stroke-dasharray: 8 7;
-  fill: none;
-  filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.72));
-  animation: topo-bus-flow 1.8s linear infinite;
-}
-
-.topo-bus-cap {
-  fill: #0b1f3a;
-  stroke: #67e8f9;
-  stroke-width: 2;
-}
-
-.topo-bus-title {
+.topo-layer-bus-title {
   fill: #67e8f9;
-  font-size: 10px;
+  font-size: 8.5px;
   font-family: Consolas, monospace;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.4px;
+  opacity: 0.88;
+  pointer-events: none;
 }
 
 .gateway-branch {
-  stroke: rgba(56, 189, 248, 0.75);
-  stroke-width: 1.5;
+  stroke: rgba(56, 189, 248, 0.78);
+  stroke-width: 1.6;
   stroke-dasharray: 4 3;
 }
 
@@ -971,6 +957,10 @@ body {
   fill: #22d3ee;
   stroke: #cffafe;
   stroke-width: 1;
+}
+
+.gateway-port-end {
+  fill: #0b1f3a;
 }
 
 .gateway-title {
@@ -988,12 +978,12 @@ body {
   pointer-events: none;
 }
 
-@keyframes topo-bus-flow {
-  to { stroke-dashoffset: -30; }
+@keyframes topo-layer-bus-flow {
+  to { stroke-dashoffset: -32; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .topo-bus-flow { animation: none; }
+  .topo-layer-bus-flow { animation: none; }
 }
 
 .topo-link {
