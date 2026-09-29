@@ -720,6 +720,13 @@ const LAYER_TITLES = {
   bay: "间隔层 (BAY LAYER)",
   process: "过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)",
 };
+/* 叠加的层间通信总线：只负责前端可视表达，不进入 topology.links 或报文粒子路径 */
+const LAYER_GATEWAY_META = {
+  external: { title: "外界网关", code: "EXT-GW" },
+  station: { title: "站控网关", code: "STATION-GW" },
+  bay: { title: "间隔网关", code: "BAY-GW" },
+  process: { title: "过程网关", code: "PROCESS-GW" },
+};
 const LINK_TYPE_META = {
   wired: { label: "站内网络总线", cls: "line-wired", title: "站内以太网数字通信总线 (MMS/GOOSE/SV)" },
   wireless: { label: "无线链路", cls: "line-wireless", title: "跨站与星地无线链路（授时卫星↔授时系统、其他电站↔站端监控）" },
@@ -819,8 +826,127 @@ function renderLayerBands(bands) {
   group.appendChild(frag);
 }
 
+/* 计算叠加总线的几何位置：竖向总线放在现有内容右侧，每层网关通过支路接入 */
+function resolveCommunicationBus(bands) {
+  const validBands = (Array.isArray(bands) ? bands : []).filter((band) => band && band.key);
+  if (!validBands.length) return null;
+
+  let contentRight = 0;
+  validBands.forEach((band) => {
+    contentRight = Math.max(contentRight, Number(band.x || 0) + Number(band.width || 0));
+  });
+  Object.values(NODE_COORDINATES).forEach((coord) => {
+    contentRight = Math.max(contentRight, coord.x + NODE_SIZE.w);
+  });
+
+  const gatewayWidth = 92;
+  const gatewayHeight = 34;
+  const busX = contentRight + 44;
+  const gatewayLeft = busX + 26;
+  const gatewayRight = gatewayLeft + gatewayWidth;
+  const gateways = validBands.map((band) => {
+    const meta = LAYER_GATEWAY_META[band.key] || {
+      title: `${band.title || band.key}网关`,
+      code: "GATEWAY",
+    };
+    const centerY = Number(band.y || 0) + Number(band.height || 0) / 2;
+    return {
+      key: band.key,
+      title: meta.title,
+      code: meta.code,
+      centerY,
+      x: gatewayLeft,
+      y: centerY - gatewayHeight / 2,
+      width: gatewayWidth,
+      height: gatewayHeight,
+      branchStartX: Number(band.x || 0) + Number(band.width || 0),
+      branchEndX: busX,
+    };
+  });
+
+  const firstY = Math.min(...gateways.map((gateway) => gateway.centerY));
+  const lastY = Math.max(...gateways.map((gateway) => gateway.centerY));
+  return {
+    busX,
+    busTop: firstY - 38,
+    busBottom: lastY + 38,
+    gatewayLeft,
+    gatewayRight,
+    gatewayWidth,
+    gatewayHeight,
+    gateways,
+    maxX: gatewayRight + 34,
+    maxY: lastY + 38,
+  };
+}
+
+/* 渲染叠加总线与每层网关；节点、原链路和动画层均保持不变 */
+function renderCommunicationBus(bands) {
+  const busGroup = $("#topo-bus");
+  const gatewayGroup = $("#topo-gateways");
+  const geometry = resolveCommunicationBus(bands);
+  if (!busGroup || !gatewayGroup) return geometry;
+  if (!geometry) {
+    busGroup.innerHTML = "";
+    gatewayGroup.innerHTML = "";
+    busGroup.removeAttribute("data-render-key");
+    gatewayGroup.removeAttribute("data-render-key");
+    return null;
+  }
+
+  const renderKey = JSON.stringify({
+    busX: geometry.busX,
+    top: geometry.busTop,
+    bottom: geometry.busBottom,
+    gateways: geometry.gateways.map((gateway) => [
+      gateway.key,
+      gateway.centerY,
+      gateway.branchStartX,
+      gateway.branchEndX,
+    ]),
+  });
+  if (busGroup.getAttribute("data-render-key") === renderKey) return geometry;
+
+  busGroup.setAttribute("data-render-key", renderKey);
+  gatewayGroup.setAttribute("data-render-key", renderKey);
+
+  const busX = geometry.busX.toFixed(1);
+  const busTop = geometry.busTop.toFixed(1);
+  const busBottom = geometry.busBottom.toFixed(1);
+  busGroup.innerHTML = `
+    <line x1="${busX}" y1="${busTop}" x2="${busX}" y2="${busBottom}" class="topo-bus-rail"></line>
+    <line x1="${busX}" y1="${busTop}" x2="${busX}" y2="${busBottom}" class="topo-bus-flow"></line>
+    <circle cx="${busX}" cy="${busTop}" r="4" class="topo-bus-cap"></circle>
+    <circle cx="${busX}" cy="${busBottom}" r="4" class="topo-bus-cap"></circle>
+    <text x="${(geometry.busX + 10).toFixed(1)}" y="${(geometry.busTop - 8).toFixed(1)}" class="topo-bus-title">通信总线 / COMM BUS</text>
+    <title>叠加展示的层间通信总线，不参与原有点对点链路和报文路由</title>
+  `;
+
+  gatewayGroup.innerHTML = geometry.gateways.map((gateway) => {
+    const x = gateway.x.toFixed(1);
+    const y = gateway.y.toFixed(1);
+    const width = gateway.width.toFixed(1);
+    const height = gateway.height.toFixed(1);
+    const centerY = gateway.centerY.toFixed(1);
+    const branchStartX = gateway.branchStartX.toFixed(1);
+    const gatewayRight = geometry.gatewayRight.toFixed(1);
+    return `
+      <g class="gateway-node" data-layer-key="${esc(gateway.key)}">
+        <line x1="${branchStartX}" y1="${centerY}" x2="${busX}" y2="${centerY}" class="gateway-branch"></line>
+        <line x1="${busX}" y1="${centerY}" x2="${gateway.x.toFixed(1)}" y2="${centerY}" class="gateway-branch"></line>
+        <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="6"></rect>
+        <circle cx="${busX}" cy="${centerY}" r="4" class="gateway-port"></circle>
+        <text x="${(gateway.x + 10).toFixed(1)}" y="${(gateway.centerY - 2).toFixed(1)}" class="gateway-title">${esc(gateway.title)}</text>
+        <text x="${(gateway.x + 10).toFixed(1)}" y="${(gateway.centerY + 11).toFixed(1)}" class="gateway-sub">${esc(gateway.code)}</text>
+        <title>${esc(gateway.title)}：叠加层的总线接入点</title>
+      </g>
+    `;
+  }).join("");
+
+  return geometry;
+}
 /* 画布尺寸由场景版式外接矩形推导，也允许场景用 layout.canvas 覆盖 */
-function applyCanvasSize(layout, bands) {
+function applyCanvasSize(layout, bands, busGeometry) {
   const svg = $("#topo-svg");
   if (!svg) return;
   const canvas = layout.canvas || {};
@@ -839,6 +965,10 @@ function applyCanvasSize(layout, bands) {
     });
     width = width || maxX + 10;
     height = height || maxY + 20;
+  }
+  if (busGeometry) {
+    width = Math.max(width, busGeometry.maxX);
+    height = Math.max(height, busGeometry.maxY);
   }
   state.canvasSize = { width: Math.round(width), height: Math.round(height) };
   svg.setAttribute("viewBox", `0 0 ${state.canvasSize.width} ${state.canvasSize.height}`);
@@ -982,7 +1112,8 @@ function applyScenarioLayout(topo) {
 
   const bands = resolveLayerBands(layout, devices);
   renderLayerBands(bands);
-  applyCanvasSize(layout, bands);
+  const busGeometry = renderCommunicationBus(bands);
+  applyCanvasSize(layout, bands, busGeometry);
   renderLinkLegend(topo.links || []);
 }
 

@@ -805,6 +805,28 @@ body {
   vertical-align: middle;
 }
 
+.legend-bus-symbol {
+  width: 22px;
+  height: 3px;
+  display: inline-block;
+  position: relative;
+  background: #22d3ee;
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.85);
+}
+
+.legend-bus-symbol::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #7dd3fc;
+  border-radius: 2px;
+  background: #0b1f3a;
+  transform: translate(-50%, -50%);
+}
+
 .line-wired { background: #0ea5e9; box-shadow: 0 0 4px #0ea5e9; }
 .line-wireless {
   background: repeating-linear-gradient(90deg, #f472b6, #f472b6 5px, transparent 5px, transparent 9px);
@@ -878,6 +900,83 @@ body {
   font-family: Consolas, monospace;
   letter-spacing: 1px;
   font-weight: 600;
+}
+
+/* 叠加总线：仅表达层间公共通信通道，不替换任何原有拓扑连线 */
+.topo-bus-layer,
+.topo-gateways-layer {
+  pointer-events: none;
+}
+
+.topo-bus-rail {
+  stroke: rgba(34, 211, 238, 0.3);
+  stroke-width: 8;
+  fill: none;
+}
+
+.topo-bus-flow {
+  stroke: #22d3ee;
+  stroke-width: 2.4;
+  stroke-dasharray: 8 7;
+  fill: none;
+  filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.72));
+  animation: topo-bus-flow 1.8s linear infinite;
+}
+
+.topo-bus-cap {
+  fill: #0b1f3a;
+  stroke: #67e8f9;
+  stroke-width: 2;
+}
+
+.topo-bus-title {
+  fill: #67e8f9;
+  font-size: 10px;
+  font-family: Consolas, monospace;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.gateway-branch {
+  stroke: rgba(56, 189, 248, 0.75);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.gateway-node rect {
+  fill: rgba(11, 31, 58, 0.96);
+  stroke: #38bdf8;
+  stroke-width: 1.4;
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.35));
+}
+
+.gateway-node .gateway-port {
+  fill: #22d3ee;
+  stroke: #cffafe;
+  stroke-width: 1;
+}
+
+.gateway-title {
+  fill: #e2e8f0;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.gateway-sub {
+  fill: #7dd3fc;
+  font-size: 8px;
+  font-family: Consolas, monospace;
+  letter-spacing: 0.4px;
+  pointer-events: none;
+}
+
+@keyframes topo-bus-flow {
+  to { stroke-dashoffset: -30; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topo-bus-flow { animation: none; }
 }
 
 .topo-link {
