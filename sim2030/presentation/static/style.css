@@ -902,10 +902,27 @@ body {
   font-weight: 600;
 }
 
-/* 叠加总线：仅表达层间公共通信通道，不替换任何原有拓扑连线 */
+/* 中央通信总线：各层通过独立网关接入，原有点对点连线不渲染 */
 .topo-bus-layer,
 .topo-gateways-layer {
   pointer-events: none;
+}
+
+.topo-layer-rail {
+  stroke: rgba(34, 211, 238, 0.58);
+  stroke-width: 2.2;
+  fill: none;
+  filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.62));
+}
+
+.topo-layer-junction {
+  fill: #0b1f3a;
+  stroke: #67e8f9;
+  stroke-width: 1.6;
+}
+
+.gateway-port-end {
+  fill: #0b1f3a;
 }
 
 .topo-bus-rail {

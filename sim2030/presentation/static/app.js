@@ -720,13 +720,16 @@ const LAYER_TITLES = {
   bay: "间隔层 (BAY LAYER)",
   process: "过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)",
 };
-/* 叠加的层间通信总线：只负责前端可视表达，不进入 topology.links 或报文粒子路径 */
+/* 中央通信总线：只负责前端可视表达，不进入 topology.links；报文沿总线与分层接入轨运动 */
 const LAYER_GATEWAY_META = {
   external: { title: "外界网关", code: "EXT-GW" },
   station: { title: "站控网关", code: "STATION-GW" },
   bay: { title: "间隔网关", code: "BAY-GW" },
   process: { title: "过程网关", code: "PROCESS-GW" },
 };
+const DEVICE_LAYER = {};
+let topoBusGeometry = null;
+
 const LINK_TYPE_META = {
   wired: { label: "站内网络总线", cls: "line-wired", title: "站内以太网数字通信总线 (MMS/GOOSE/SV)" },
   wireless: { label: "无线链路", cls: "line-wireless", title: "跨站与星地无线链路（授时卫星↔授时系统、其他电站↔站端监控）" },
@@ -826,61 +829,89 @@ function renderLayerBands(bands) {
   group.appendChild(frag);
 }
 
-/* 计算叠加总线的几何位置：竖向总线放在现有内容右侧，每层网关通过支路接入 */
+/* Central communication bus: one vertical backbone between device columns,
+   one horizontal layer rail per logical layer, and one gateway per layer. */
+function resolveCentralBusX(bands) {
+  const nodes = Object.values(NODE_COORDINATES);
+  const minX = Math.min(...bands.map((band) => Number(band.x || 0)));
+  const maxX = Math.max(...bands.map((band) => (
+    Number(band.x || 0) + Number(band.width || 0)
+  )));
+  const centerX = minX + (maxX - minX) / 2;
+  const margin = 10;
+  const isClear = (x) => nodes.every((coord) => (
+    x <= coord.x - margin || x >= coord.x + NODE_SIZE.w + margin
+  ));
+
+  const limit = Math.ceil((maxX - minX) / 2);
+  for (let offset = 0; offset <= limit; offset += 1) {
+    const right = centerX + offset;
+    if (isClear(right)) return right;
+    const left = centerX - offset;
+    if (isClear(left)) return left;
+  }
+  return centerX;
+}
+
 function resolveCommunicationBus(bands) {
   const validBands = (Array.isArray(bands) ? bands : []).filter((band) => band && band.key);
   if (!validBands.length) return null;
 
-  let contentRight = 0;
-  validBands.forEach((band) => {
-    contentRight = Math.max(contentRight, Number(band.x || 0) + Number(band.width || 0));
-  });
-  Object.values(NODE_COORDINATES).forEach((coord) => {
-    contentRight = Math.max(contentRight, coord.x + NODE_SIZE.w);
-  });
-
+  const busX = resolveCentralBusX(validBands);
   const gatewayWidth = 92;
   const gatewayHeight = 34;
-  const busX = contentRight + 44;
-  const gatewayLeft = busX + 26;
-  const gatewayRight = gatewayLeft + gatewayWidth;
+  const gatewayGap = 24;
   const gateways = validBands.map((band) => {
     const meta = LAYER_GATEWAY_META[band.key] || {
       title: `${band.title || band.key}网关`,
       code: "GATEWAY",
     };
-    const centerY = Number(band.y || 0) + Number(band.height || 0) / 2;
+    const trackY = Number(band.y || 0) + 10;
+    const gatewayX = busX + gatewayGap;
+    const desiredStart = Number(band.x || 0) + Math.min(
+      340,
+      Math.max(140, Number(band.width || 0) * 0.38)
+    );
     return {
       key: band.key,
       title: meta.title,
       code: meta.code,
-      centerY,
-      x: gatewayLeft,
-      y: centerY - gatewayHeight / 2,
+      centerY: trackY,
+      trackY,
+      x: gatewayX,
+      y: trackY - gatewayHeight / 2,
       width: gatewayWidth,
       height: gatewayHeight,
-      branchStartX: Number(band.x || 0) + Number(band.width || 0),
-      branchEndX: busX,
+      trackStartX: Math.min(desiredStart, busX - 40),
+      trackEndX: busX,
+      branchStartX: busX,
+      branchEndX: gatewayX,
     };
   });
 
-  const firstY = Math.min(...gateways.map((gateway) => gateway.centerY));
-  const lastY = Math.max(...gateways.map((gateway) => gateway.centerY));
+  const bandTop = Math.min(...validBands.map((band) => Number(band.y || 0)));
+  const bandBottom = Math.max(...validBands.map((band) => (
+    Number(band.y || 0) + Number(band.height || 0)
+  )));
+  const gatewayRight = Math.max(...gateways.map((gateway) => gateway.x + gateway.width));
+  const busTop = bandTop + 8;
+  const busBottom = bandBottom - 8;
+
   return {
     busX,
-    busTop: firstY - 38,
-    busBottom: lastY + 38,
-    gatewayLeft,
-    gatewayRight,
+    busTop,
+    busBottom,
     gatewayWidth,
     gatewayHeight,
     gateways,
-    maxX: gatewayRight + 34,
-    maxY: lastY + 38,
+    maxX: Math.max(
+      ...validBands.map((band) => Number(band.x || 0) + Number(band.width || 0)),
+      gatewayRight + 28
+    ),
+    maxY: busBottom + 12,
   };
 }
-
-/* 渲染叠加总线与每层网关；节点、原链路和动画层均保持不变 */
+/* Render the central bus and one gateway per layer. */
 function renderCommunicationBus(bands) {
   const busGroup = $("#topo-bus");
   const gatewayGroup = $("#topo-gateways");
@@ -901,8 +932,9 @@ function renderCommunicationBus(bands) {
     gateways: geometry.gateways.map((gateway) => [
       gateway.key,
       gateway.centerY,
-      gateway.branchStartX,
-      gateway.branchEndX,
+      gateway.x,
+      gateway.trackStartX,
+      gateway.trackEndX,
     ]),
   });
   if (busGroup.getAttribute("data-render-key") === renderKey) return geometry;
@@ -913,13 +945,25 @@ function renderCommunicationBus(bands) {
   const busX = geometry.busX.toFixed(1);
   const busTop = geometry.busTop.toFixed(1);
   const busBottom = geometry.busBottom.toFixed(1);
+  const layerRails = geometry.gateways.map((gateway) => {
+    const y = gateway.trackY.toFixed(1);
+    return `
+      <line x1="${gateway.trackStartX.toFixed(1)}" y1="${y}" x2="${gateway.trackEndX.toFixed(1)}" y2="${y}" class="topo-layer-rail">
+        <title>${esc(gateway.title)}接入层总线</title>
+      </line>`;
+  }).join("");
+
   busGroup.innerHTML = `
+    ${layerRails}
     <line x1="${busX}" y1="${busTop}" x2="${busX}" y2="${busBottom}" class="topo-bus-rail"></line>
     <line x1="${busX}" y1="${busTop}" x2="${busX}" y2="${busBottom}" class="topo-bus-flow"></line>
     <circle cx="${busX}" cy="${busTop}" r="4" class="topo-bus-cap"></circle>
     <circle cx="${busX}" cy="${busBottom}" r="4" class="topo-bus-cap"></circle>
-    <text x="${(geometry.busX + 10).toFixed(1)}" y="${(geometry.busTop - 8).toFixed(1)}" class="topo-bus-title">通信总线 / COMM BUS</text>
-    <title>叠加展示的层间通信总线，不参与原有点对点链路和报文路由</title>
+    ${geometry.gateways.map((gateway) => (
+      `<circle cx="${busX}" cy="${gateway.centerY.toFixed(1)}" r="3.5" class="topo-layer-junction"></circle>`
+    )).join("")}
+    <text x="${(geometry.busX - 10).toFixed(1)}" y="${(geometry.busTop + 20).toFixed(1)}" text-anchor="end" transform="rotate(-90 ${(geometry.busX - 10).toFixed(1)} ${(geometry.busTop + 20).toFixed(1)})" class="topo-bus-title">中央通信总线 / COMM BUS</text>
+    <title>中央通信总线：各层通过独立网关接入同一条站内通信总线</title>
   `;
 
   gatewayGroup.innerHTML = geometry.gateways.map((gateway) => {
@@ -929,16 +973,16 @@ function renderCommunicationBus(bands) {
     const height = gateway.height.toFixed(1);
     const centerY = gateway.centerY.toFixed(1);
     const branchStartX = gateway.branchStartX.toFixed(1);
-    const gatewayRight = geometry.gatewayRight.toFixed(1);
+    const branchEndX = gateway.branchEndX.toFixed(1);
     return `
       <g class="gateway-node" data-layer-key="${esc(gateway.key)}">
-        <line x1="${branchStartX}" y1="${centerY}" x2="${busX}" y2="${centerY}" class="gateway-branch"></line>
-        <line x1="${busX}" y1="${centerY}" x2="${gateway.x.toFixed(1)}" y2="${centerY}" class="gateway-branch"></line>
+        <line x1="${branchStartX}" y1="${centerY}" x2="${branchEndX}" y2="${centerY}" class="gateway-branch"></line>
+        <circle cx="${branchStartX}" cy="${centerY}" r="4" class="gateway-port"></circle>
+        <circle cx="${branchEndX}" cy="${centerY}" r="3" class="gateway-port gateway-port-end"></circle>
         <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="6"></rect>
-        <circle cx="${busX}" cy="${centerY}" r="4" class="gateway-port"></circle>
         <text x="${(gateway.x + 10).toFixed(1)}" y="${(gateway.centerY - 2).toFixed(1)}" class="gateway-title">${esc(gateway.title)}</text>
         <text x="${(gateway.x + 10).toFixed(1)}" y="${(gateway.centerY + 11).toFixed(1)}" class="gateway-sub">${esc(gateway.code)}</text>
-        <title>${esc(gateway.title)}：叠加层的总线接入点</title>
+        <title>${esc(gateway.title)}：当前层接入中央通信总线的网关</title>
       </g>
     `;
   }).join("");
@@ -1110,10 +1154,15 @@ function applyScenarioLayout(topo) {
   Object.keys(NODE_COORDINATES).forEach((key) => delete NODE_COORDINATES[key]);
   Object.assign(NODE_COORDINATES, resolveNodeCoordinates(devices, layout));
 
+  Object.keys(DEVICE_LAYER).forEach((key) => delete DEVICE_LAYER[key]);
+  devices.forEach((dev) => {
+    DEVICE_LAYER[dev.device_id] = dev.layer || "process";
+  });
+
   const bands = resolveLayerBands(layout, devices);
   renderLayerBands(bands);
-  const busGeometry = renderCommunicationBus(bands);
-  applyCanvasSize(layout, bands, busGeometry);
+  topoBusGeometry = renderCommunicationBus(bands);
+  applyCanvasSize(layout, bands, topoBusGeometry);
   renderLinkLegend(topo.links || []);
 }
 
@@ -1249,38 +1298,8 @@ function renderTopology(data) {
   const linksGroup = $("#topo-links");
   const nodesGroup = $("#topo-nodes");
 
-  // 渲染/同步连线
-  if (!state.renderedTopologyOnce || linksGroup.children.length === 0) {
-    linksGroup.innerHTML = "";
-    links.forEach((link) => {
-      const srcId = Array.isArray(link.endpoint_a) ? link.endpoint_a[0] : link.endpoint_a;
-      const dstId = Array.isArray(link.endpoint_b) ? link.endpoint_b[0] : link.endpoint_b;
-
-      const srcCoord = NODE_COORDINATES[srcId];
-      const dstCoord = NODE_COORDINATES[dstId];
-      if (!srcCoord || !dstCoord) return;
-
-      const x1 = srcCoord.x + 45;
-      const y1 = srcCoord.y + 24;
-      const x2 = dstCoord.x + 45;
-      const y2 = dstCoord.y + 24;
-
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", x1);
-      line.setAttribute("y1", y1);
-      line.setAttribute("x2", x2);
-      line.setAttribute("y2", y2);
-      line.setAttribute("class", `topo-link ${link.link_type || "wired"}`);
-      line.setAttribute("data-link-id", link.link_id || "");
-
-      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      title.textContent = `${srcId} ↔ ${dstId} (${link.link_type || "wired"})`;
-      line.appendChild(title);
-
-      linksGroup.appendChild(line);
-    });
-  }
-
+  // 总线模式：隐藏原有点对点连线，避免与中央总线重复表达。
+  linksGroup.innerHTML = "";
   // 渲染/同步节点位置与动态状态
   if (!state.renderedTopologyOnce || nodesGroup.children.length === 0) {
     nodesGroup.innerHTML = "";
@@ -1512,6 +1531,41 @@ if (!animFrameId) {
   animFrameId = requestAnimationFrame(animateParticles);
 }
 
+function resolvePacketBusEndpoints(senderId, receiverId, laneOffset) {
+  const senderCoord = NODE_COORDINATES[senderId];
+  const receiverCoord = NODE_COORDINATES[receiverId];
+  const fallback = senderCoord && receiverCoord ? {
+    x1: senderCoord.x + 45,
+    y1: senderCoord.y + 24,
+    x2: receiverCoord.x + 45,
+    y2: receiverCoord.y + 24,
+  } : null;
+  const geometry = topoBusGeometry;
+  const sourceLayer = DEVICE_LAYER[senderId];
+  const targetLayer = DEVICE_LAYER[receiverId];
+  if (!geometry || !sourceLayer || !targetLayer) return fallback;
+
+  const sourceGateway = geometry.gateways.find((gateway) => gateway.key === sourceLayer);
+  const targetGateway = geometry.gateways.find((gateway) => gateway.key === targetLayer);
+  if (!sourceGateway || !targetGateway) return fallback;
+
+  if (sourceLayer === targetLayer) {
+    return {
+      x1: sourceGateway.trackStartX + 12,
+      y1: sourceGateway.centerY + laneOffset,
+      x2: geometry.busX - 10,
+      y2: sourceGateway.centerY + laneOffset,
+    };
+  }
+
+  return {
+    x1: geometry.busX + laneOffset,
+    y1: sourceGateway.centerY,
+    x2: geometry.busX + laneOffset,
+    y2: targetGateway.centerY,
+  };
+}
+
 /* 增量差分更新报文流，保持老报文连续运动不被销毁重置 */
 function updatePacketFlow(data) {
   // 系统终止/停止或回放结束：彻底清理在途报文粒子，杜绝幽灵粒子传递
@@ -1543,22 +1597,21 @@ function updatePacketFlow(data) {
       return;
     }
 
-    // 新加入的在途报文
-    const src = NODE_COORDINATES[msg.sender_id];
-    const dst = NODE_COORDINATES[msg.receiver_id];
-    if (!src || !dst) return;
+    const laneOffset = (idx % 5 - 2) * 3;
+    const endpoint = resolvePacketBusEndpoints(msg.sender_id, msg.receiver_id, laneOffset);
+    if (!endpoint) return;
 
     particleMap.set(id, {
       id: id,
       messageId: messageId,
-      x1: src.x + 45,
-      y1: src.y + 24,
-      x2: dst.x + 45,
-      y2: dst.y + 24,
+      x1: endpoint.x1,
+      y1: endpoint.y1,
+      x2: endpoint.x2,
+      y2: endpoint.y2,
       businessType: msg.business_type || "unknown",
       category: particleCategory(msg.business_type || "unknown"),
       birthTime: animClock,
-      duration: 1100, // 约1.1秒平滑穿越
+      duration: 1100,
       isDead: false,
     });
   });
@@ -1741,7 +1794,7 @@ function inspectDevice(deviceId, fillTarget = false) {
 function showTopoView() {
   $("#topo-container").style.display = "flex";
   $("#sub-view-container").style.display = "none";
-  // 确保 DOM 连线和坐标立即与 NODE_COORDINATES 保持绝对一致
+  // 确保设备节点与中央总线几何立即和 NODE_COORDINATES 保持一致
   syncTopologyPositions();
 }
 
@@ -1758,36 +1811,8 @@ function syncTopologyPositions() {
     }
   });
 
-  // 2. 同步所有连线端点绝对坐标
-  if (state.systemData?.topology?.links) {
-    linksGroup.innerHTML = "";
-    state.systemData.topology.links.forEach((link) => {
-      const srcId = Array.isArray(link.endpoint_a) ? link.endpoint_a[0] : link.endpoint_a;
-      const dstId = Array.isArray(link.endpoint_b) ? link.endpoint_b[0] : link.endpoint_b;
-      const srcCoord = NODE_COORDINATES[srcId];
-      const dstCoord = NODE_COORDINATES[dstId];
-      if (!srcCoord || !dstCoord) return;
-
-      const x1 = srcCoord.x + 45;
-      const y1 = srcCoord.y + 24;
-      const x2 = dstCoord.x + 45;
-      const y2 = dstCoord.y + 24;
-
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", x1);
-      line.setAttribute("y1", y1);
-      line.setAttribute("x2", x2);
-      line.setAttribute("y2", y2);
-      line.setAttribute("class", `topo-link ${link.link_type || "wired"}`);
-      line.setAttribute("data-link-id", link.link_id || "");
-
-      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      title.textContent = `${srcId} ↔ ${dstId} (${link.link_type || "wired"})`;
-      line.appendChild(title);
-
-      linksGroup.appendChild(line);
-    });
-  }
+  // 2. 总线模式不再渲染原有点对点连线。
+  linksGroup.innerHTML = "";
 }
 
 function showSubView() {
