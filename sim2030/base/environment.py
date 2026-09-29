@@ -34,6 +34,7 @@ class OperatingEnvironment:
         self._shared: Dict[str, Any] = {
             "bus_voltage_kv": self.nominal_voltage_kv,
             "line_current_a": 0.0,
+            "active_power_mw": 0.0,
             "reactive_power_var": 0.0,
             "ambient_temp_c": self.ambient_temp_c,
             "cooling_on": False,
@@ -63,10 +64,12 @@ class OperatingEnvironment:
         if bus_voltage_kv > 0:
             load_current_a = self.load_active_mw * 1000.0 / (math.sqrt(3.0) * bus_voltage_kv)
         line_current_a = load_current_a if breaker_closed else 0.0
+        active_power_mw = math.sqrt(3.0) * bus_voltage_kv * line_current_a / 1000.0
 
         self._shared = {
             "bus_voltage_kv": bus_voltage_kv,
             "line_current_a": line_current_a,
+            "active_power_mw": active_power_mw,
             "reactive_power_var": self.load_reactive_mvar,
             "ambient_temp_c": self.ambient_temp_c,
             "cooling_on": cooling_on,

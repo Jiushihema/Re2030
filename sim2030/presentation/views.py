@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import math
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +36,7 @@ def _derive_environment(reader: RunReader, fallback: Optional[Dict[str, Any]] = 
     env = {
         "bus_voltage_kv": 10.0,
         "line_current_a": 0.0,
+        "active_power_mw": 0.0,
         "reactive_power_var": 0.0,
         "ambient_temp_c": 30.0,
         "cooling_on": False,
@@ -54,6 +56,7 @@ def _derive_environment(reader: RunReader, fallback: Optional[Dict[str, Any]] = 
                 env["line_current_a"] = float(value)
             elif sensor_id == "vt_voltage":
                 env["bus_voltage_kv"] = float(value)
+    env["active_power_mw"] = math.sqrt(3.0) * float(env["bus_voltage_kv"]) * float(env["line_current_a"]) / 1000.0
 
     snapshot = _last_truth_snapshot(reader)
     device_snapshots = snapshot.get("device_snapshots", {})
@@ -76,16 +79,7 @@ def build_system_view(records) -> Dict[str, Any]:
     manifest = reader.manifest()
     snapshot = _last_truth_snapshot(reader)
     device_snapshots = snapshot.get("device_snapshots", {})
-    devices = []
-    for asset_id, info in sorted(device_snapshots.items()):
-        devices.append({
-            "device_id": asset_id,
-            "device_type": info.get("device_type"),
-            "layer": info.get("layer"),
-            "name": info.get("name") or info.get("device_type") or asset_id,
-            "state": info.get("state"),
-            "effects": info.get("effects"),
-        })
+    devices = _topology_devices(manifest, device_snapshots)
 
     events = reader.evidence()
     latest_batch: Dict[str, Any] = {}
@@ -102,7 +96,11 @@ def build_system_view(records) -> Dict[str, Any]:
         "scenario_id": manifest.get("scenario_id"),
         "status": "finished",
         "time_us": snapshot.get("time_us", 0),
-        "topology": {"devices": devices, "links": manifest.get("links", [])},
+        "topology": {
+            "devices": devices,
+            "links": manifest.get("links", []),
+            "layout": manifest.get("layout", {}),
+        },
         "device_snapshots": device_snapshots,
         "management": device_snapshots,
         "environment": environment,
@@ -116,6 +114,38 @@ def build_system_view(records) -> Dict[str, Any]:
         "recognition": reader.read("recognition"),
         "defense": reader.read("defense"),
     }
+
+
+def _topology_devices(manifest: Dict[str, Any], device_snapshots: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """优先按 manifest 中的设备清单（含名称与版式）还原拓扑，旧记录回退到真值快照。"""
+    manifest_devices = manifest.get("devices") or []
+    devices: List[Dict[str, Any]] = []
+    if manifest_devices:
+        for spec in manifest_devices:
+            asset_id = spec.get("device_id")
+            info = device_snapshots.get(asset_id, {})
+            devices.append({
+                "device_id": asset_id,
+                "device_type": spec.get("device_type") or info.get("device_type"),
+                "layer": spec.get("layer") or info.get("layer"),
+                "name": spec.get("name") or info.get("name") or asset_id,
+                "ports": spec.get("ports", {}),
+                "layout": spec.get("layout", {}),
+                "state": info.get("state"),
+                "effects": info.get("effects"),
+            })
+        return devices
+
+    for asset_id, info in sorted(device_snapshots.items()):
+        devices.append({
+            "device_id": asset_id,
+            "device_type": info.get("device_type"),
+            "layer": info.get("layer"),
+            "name": info.get("name") or info.get("device_type") or asset_id,
+            "state": info.get("state"),
+            "effects": info.get("effects"),
+        })
+    return devices
 
 
 def build_timeline(records) -> Dict[str, Any]:

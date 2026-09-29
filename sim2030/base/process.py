@@ -342,6 +342,9 @@ class SensorDevice(Device):
         value = self.sample(inputs, time_us)
         if value is not None:
             self._next_sample_us = time_us + self.sample_interval_us
+            # 保存本机最近一次读数（度数），供展示区分“度数”与“实际值”。
+            self.state["last_value"] = value
+            self.state["last_sample_time_us"] = time_us
             messages.extend(
                 self._new_message(
                     self.up_port,

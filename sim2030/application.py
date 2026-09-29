@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from sim2030.attack.planner import AttackPlanner
 from sim2030.base.engine import SimulationEngine
 from sim2030.base.observations import FileObservationSource, ObservationGateway, EvidenceReader
+from sim2030.base.security import ElectromagneticAttackNode
 from sim2030.contracts import StepResult
 from sim2030.defense.engine import DEFAULT_STRATEGIES, DefenseEngine
 from sim2030.evaluation import Evaluator
@@ -29,6 +30,9 @@ STATUS_FINISHED = "finished"
 STATUS_ERROR = "error"
 
 CONTROL_ACTIONS = {"start_run", "pause_run", "stop_run"}
+
+# 演示平面手动攻击动作：直接作用于底座，不经站端业务命令链路。
+MANUAL_DEVICE_ACTIONS = {"start_attack", "stop_attack"}
 
 
 class Application:
@@ -196,6 +200,9 @@ class Application:
         if not action_type:
             return {"request_id": request_id, "status": "rejected", "reason": "缺少 action_type"}
 
+        if action_type in MANUAL_DEVICE_ACTIONS:
+            return self._submit_manual_device_action(target_id, action_type, request_id)
+
         operation = dict(request)
         operation["request_id"] = request_id
         operation.setdefault("time_us", self.current_time_us)
@@ -217,6 +224,57 @@ class Application:
             summary = self._step_locked()
             return {"request_id": request_id, "status": "accepted", "action": "step", "summary": summary}
         return {"request_id": request_id, "status": "rejected", "reason": f"未知控制操作 {action}"}
+
+    def _submit_manual_device_action(self, device_id: str, action_type: str, request_id: str) -> Dict[str, Any]:
+        """演示平面手动“开始/结束攻击”：直接作用于底座，不经站端业务命令链路。"""
+        device = self.engine.get_device(device_id)
+        if not isinstance(device, ElectromagneticAttackNode):
+            return {"request_id": request_id, "status": "rejected",
+                    "reason": f"设备 {device_id} 不支持手动攻击操作"}
+
+        if action_type == "start_attack":
+            if device.emitting:
+                return {"request_id": request_id, "status": "noop", "action": action_type,
+                        "reason": "攻击已在进行"}
+            effect = device.build_effect_request(self.current_time_us)
+            receipt = self.engine.submit_effect(effect)
+            if receipt.get("status") != "accepted":
+                return {"request_id": request_id, "status": "rejected",
+                        "reason": receipt.get("reason", "作用被拒绝")}
+            device.set_emitting(True)
+            self._record_manual_attack(device, effect, "accepted")
+            self._last_step_summary = self._summary()
+            return {"request_id": request_id, "status": "accepted", "action": action_type,
+                    "effect_id": effect.effect_id, "target_id": effect.target_id}
+
+        if not device.emitting:
+            return {"request_id": request_id, "status": "noop", "action": action_type,
+                    "reason": "攻击未进行"}
+        effect = device.build_effect_request(self.current_time_us)
+        self.engine.clear_effect(effect.effect_id)
+        device.set_emitting(False)
+        self._record_manual_attack(device, effect, "cleared")
+        self._last_step_summary = self._summary()
+        return {"request_id": request_id, "status": "accepted", "action": action_type,
+                "effect_id": effect.effect_id, "target_id": effect.target_id}
+
+    def _record_manual_attack(self, device: Any, effect: Any, status: str) -> None:
+        """把手动攻击的开始/结束写入攻击记录流，便于时间轴展示。"""
+        if self.recorder is None:
+            return
+        self.recorder.append("attack", {
+            "type": "attack_submission",
+            "attack_id": effect.effect_id,
+            "effect_id": effect.effect_id,
+            "attack_type": "electromagnetic",
+            "source_id": device.asset_id,
+            "target_id": effect.target_id,
+            "effect_type": effect.effect_type,
+            "parameters": dict(effect.parameters),
+            "status": status,
+            "manual": True,
+            "time_us": self.current_time_us,
+        })
 
     def step(self) -> Dict[str, Any]:
         """按单步运行顺序推进一次仿真，返回展示摘要。"""
@@ -506,19 +564,15 @@ class Application:
     # ──────────────────────────────────────────────
     # 内部方法：展示视图
     # ──────────────────────────────────────────────
+    def _in_flight_messages(self) -> List[Dict[str, Any]]:
+        """Return the complete in-flight internal messages for the packet inspector."""
+        if self.engine is None or not hasattr(self.engine, "_network"):
+            return []
+        return [item[2].to_record() for item in self.engine._network._queue]
+
     def _summary(self) -> Dict[str, Any]:
-                # 提取在途报文流
-        in_flight_messages = []
-        if self.engine is not None and hasattr(self.engine, "_network"):
-            for item in self.engine._network._queue:
-                msg = item[2]
-                in_flight_messages.append({
-                    "message_id": msg.message_id,
-                    "sender_id": msg.sender_id,
-                    "receiver_id": msg.receiver_id,
-                    "business_type": msg.business_type,
-                    "deliver_time_us": msg.deliver_time_us,
-                })
+        # 提取在途报文流
+        in_flight_messages = self._in_flight_messages()
 
         # 提取全站环境物理量
         environment = {}
@@ -550,19 +604,10 @@ class Application:
                     "layer": device.layer,
                     "name": device.name,
                     "ports": device.ports,
+                    "layout": device.layout,
                 })
                 # 提取在途报文流
-        in_flight_messages = []
-        if self.engine is not None and hasattr(self.engine, "_network"):
-            for item in self.engine._network._queue:
-                msg = item[2]
-                in_flight_messages.append({
-                    "message_id": msg.message_id,
-                    "sender_id": msg.sender_id,
-                    "receiver_id": msg.receiver_id,
-                    "business_type": msg.business_type,
-                    "deliver_time_us": msg.deliver_time_us,
-                })
+        in_flight_messages = self._in_flight_messages()
 
         # 提取全站环境物理量
         environment = {}
@@ -575,7 +620,11 @@ class Application:
             "run_id": self.run_id,
             "status": self.status,
             "time_us": self.current_time_us,
-            "topology": {"devices": devices, "links": [asdict(link) for link in (config.links if config else [])]},
+            "topology": {
+                "devices": devices,
+                "links": [asdict(link) for link in (config.links if config else [])],
+                "layout": (config.layout if config else {}),
+            },
             "management": self.engine.get_management(sorted(self._device_ids)),
             "observations": self._observation_view().get("observations", {}),
             "recognition": [asdict(r) for r in (self.recognition_engine.last_results() if self.recognition_engine else [])],
@@ -583,18 +632,8 @@ class Application:
         }
 
     def _timeline_view(self) -> Dict[str, Any]:
-                # 提取在途报文流
-        in_flight_messages = []
-        if self.engine is not None and hasattr(self.engine, "_network"):
-            for item in self.engine._network._queue:
-                msg = item[2]
-                in_flight_messages.append({
-                    "message_id": msg.message_id,
-                    "sender_id": msg.sender_id,
-                    "receiver_id": msg.receiver_id,
-                    "business_type": msg.business_type,
-                    "deliver_time_us": msg.deliver_time_us,
-                })
+        # 提取在途报文流
+        in_flight_messages = self._in_flight_messages()
 
         # 提取全站环境物理量
         environment = {}
@@ -640,6 +679,15 @@ class Application:
             "duration_us": self.duration_us,
             "device_count": len(config.devices),
             "link_count": len(config.links),
+            "layout": dict(config.layout),
+            "devices": [{
+                "device_id": device.device_id,
+                "device_type": device.device_type,
+                "layer": device.layer,
+                "name": device.name,
+                "ports": dict(device.ports),
+                "layout": dict(device.layout),
+            } for device in config.devices],
             "links": [{
                 "link_id": link.link_id,
                 "endpoint_a": list(link.endpoint_a),

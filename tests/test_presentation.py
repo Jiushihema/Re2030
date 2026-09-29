@@ -93,6 +93,32 @@ class TestPresentationViews(unittest.TestCase):
             self.server.close()
         self.tmp.cleanup()
 
+    def test_in_flight_messages_expose_complete_internal_record(self):
+        app = Application(output_root=os.path.join(self.base, "runs"))
+        app.load(self.scenario_path)
+        app.start()
+        app.step()
+
+        system = app.get_view("system")
+        messages = system["in_flight_messages"]
+        self.assertGreater(len(messages), 0)
+        self.assertEqual(
+            set(messages[0]),
+            {
+                "message_id",
+                "sender_id",
+                "receiver_id",
+                "business_type",
+                "source_port",
+                "target_port",
+                "related_request",
+                "created_time_us",
+                "deliver_time_us",
+                "payload",
+            },
+        )
+        self.assertIsInstance(messages[0]["payload"], dict)
+
     def test_views_match_records(self):
         app = Application(output_root=os.path.join(self.base, "runs"))
         app.load(self.scenario_path)

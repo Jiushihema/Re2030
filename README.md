@@ -54,6 +54,20 @@ cd codes
 D:\python\python.exe -m unittest discover -s tests -t . -v
 ```
 
+## 界面自检（可选）
+
+需要本机安装了 Edge 或 Chrome，以及 Node 18+（脚本只用内置 `fetch` / `WebSocket`，无第三方依赖）。
+
+```powershell
+# 终端 1：启动演示平面
+python main.py --ui --scenario scenarios/substation-em-attack.json --output runs --port 8765
+
+# 终端 2：无头浏览器自动创建运行、步进、触发攻击并截图
+node tools/ui_screenshot.mjs --url http://127.0.0.1:8765/ --scenario substation-em-attack --mode attack --out shot.png
+```
+
+该脚本会打印节点数、链路数、viewBox、链路图例与传感器读数，便于无人值守地核对界面效果。
+
 ## 关键约定
 
 - 内部仿真时间统一为相对场景起点的整数微秒（`time_us` / `dt_us`）。
@@ -61,6 +75,12 @@ D:\python\python.exe -m unittest discover -s tests -t . -v
 - 识别/防御接口不接收 `SimulationEngine`、完整 `ScenarioConfig`、攻击计划或真值读取器。
 - 防御动作 `completed` 只表示执行完成，只有后续观测满足恢复判据才记为 `succeeded`。
 - 识别/防御输出仅作为算法接入位置，规则基线只用于调通流程，不以预设攻击标签替代真实检测。
+- 传感器节点展示的是本机采样“度数”（可能被攻击篡改）；一次侧“实际值”见拓扑图例“实际工况（真值）”，
+  两者不一致时传感器读数会高亮提示。
+- 拓扑版式随场景加载：设备 `layout` 给节点坐标，场景 `layout.layers` 给分层带，画布尺寸自动推导；
+  链路图例只列出本场景实际出现的链路类型。
+- 拓扑加载后默认自动缩放铺满视口并居中，不出现滚动条；左键拖动可自由平移，`Ctrl+滚轮` 以光标为锚点缩放，
+  一旦比例或位置偏离默认，拓扑框右上角会出现“重置视图”按钮（点后回到自动铺满并居中）。
 
 ## 扩展入口
 

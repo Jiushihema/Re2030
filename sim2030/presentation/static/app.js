@@ -11,7 +11,15 @@ const state = {
   pollTimer: null,
   autoStepTimer: null,
   renderedTopologyOnce: false,
+  renderedRunId: null,
   particleFilter: "all",
+  selectedPacketMessageId: null,
+  zoom: 1,
+  fitZoom: 0,
+  canvasSize: null,
+  pan: { x: 0, y: 0 },
+  viewTouched: false,
+  dragMoved: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -55,6 +63,111 @@ function setStatus(text, isError = false) {
 function formatUs(us) {
   if (typeof us !== "number") return "0.000 s";
   return (us / 1000000).toFixed(3) + " s";
+}
+
+let packetToastTimer = null;
+
+function packetFieldValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return value;
+}
+
+function formatPacketPayload(payload) {
+  try {
+    return JSON.stringify(payload || {}, null, 2);
+  } catch (err) {
+    return String(payload ?? "");
+  }
+}
+
+function showPacketToast(text) {
+  const toast = $("#packet-inspector-toast");
+  if (!toast) return;
+  toast.textContent = text;
+  toast.classList.add("show");
+  window.clearTimeout(packetToastTimer);
+  packetToastTimer = window.setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+function openPacketInspector(message) {
+  const inspector = $("#packet-inspector");
+  const body = $("#packet-inspector-body");
+  const copyStatus = $("#packet-inspector-copy-status");
+  if (!inspector || !body || !message) return;
+
+  const rawJson = JSON.stringify(message, null, 2);
+  inspector.dataset.rawJson = rawJson;
+  if (copyStatus) copyStatus.textContent = "";
+  state.selectedPacketMessageId = message.message_id || null;
+  syncPacketSelection();
+
+  const fields = [
+    ["报文 ID", message.message_id],
+    ["发送方", message.sender_id],
+    ["接收方", message.receiver_id],
+    ["业务类型", message.business_type],
+    ["源端口", message.source_port],
+    ["目标端口", message.target_port],
+    ["关联请求", message.related_request],
+    ["创建时间", formatUs(message.created_time_us)],
+    ["送达时间", formatUs(message.deliver_time_us)],
+  ];
+
+  body.innerHTML = `
+    <div class="packet-field-list">
+      ${fields.map(([label, value]) => `
+        <div class="packet-field">
+          <span class="packet-field-label">${esc(label)}</span>
+          <code class="packet-field-value">${esc(packetFieldValue(value))}</code>
+        </div>
+      `).join("")}
+    </div>
+    <div class="packet-payload-section">
+      <div class="packet-payload-title">payload（业务载荷）</div>
+      <pre class="packet-payload-json">${esc(formatPacketPayload(message.payload))}</pre>
+    </div>
+  `;
+
+  inspector.classList.add("open");
+  inspector.setAttribute("aria-hidden", "false");
+  document.body.classList.add("packet-inspector-open");
+  const closeButton = $("#packet-inspector-close");
+  if (closeButton) closeButton.focus();
+}
+
+function closePacketInspector() {
+  const inspector = $("#packet-inspector");
+  if (!inspector) return;
+  state.selectedPacketMessageId = null;
+  syncPacketSelection();
+  inspector.classList.remove("open");
+  inspector.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("packet-inspector-open");
+}
+
+async function copyPacketJson() {
+  const inspector = $("#packet-inspector");
+  const status = $("#packet-inspector-copy-status");
+  const raw = inspector?.dataset.rawJson || "";
+  if (!raw) return;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(raw);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = raw;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    if (status) status.textContent = "已复制";
+  } catch (err) {
+    if (status) status.textContent = "复制失败";
+  }
 }
 
 function particleCategory(businessType) {
@@ -101,7 +214,7 @@ async function createRun() {
   state.renderedTopologyOnce = false;
   $("#run-id").textContent = payload.run_id;
   setStatus(`运行已创建：${payload.run_id}`);
-  
+
   startPolling();
   await refreshViews();
 }
@@ -141,6 +254,10 @@ async function stepSimulation() {
 
 /* 预定义设备中文名映射 */
 const DEVICE_NAME_MAP = {
+  gnss_sat: "授时卫星",
+  peer_station: "其他电站",
+  em_attack_node: "电磁攻击节点",
+  spectrum_detect_node: "检测节点",
   station: "站端监控系统",
   time_svc: "授时系统",
   prot: "过流保护装置",
@@ -421,8 +538,10 @@ async function refreshViews() {
     showTopoView();
     state.systemData = data;
     updateMetricsRibbon(data);
+    updateActualConditions(data);
     renderTopology(data);
     updatePacketFlow(data);
+    updateInterferenceFlow(data);
     updateAlertFeed(data);
     updateMonitorPanel(data);
   } else {
@@ -433,6 +552,7 @@ async function refreshViews() {
       if (res.data) {
         state.systemData = res.data;
         updateMetricsRibbon(res.data);
+        updateActualConditions(res.data);
         updateMonitorPanel(res.data);
       }
     });
@@ -465,6 +585,22 @@ function updateMetricsRibbon(data) {
   const defList = data.defense || [];
   $("#m-threats").textContent = recList.length;
   $("#m-defenses").textContent = defList.length;
+}
+
+/* 侧栏图例“实际工况（真值）”：传感器显示度数，这里给出未受扰动的真实工况 */
+function updateActualConditions(data) {
+  const env = data.environment || {};
+  const setValue = (id, value, digits) => {
+    const elem = $(`#${id}`);
+    if (!elem) return;
+    elem.textContent = value == null ? "--" : Number(value).toFixed(digits);
+  };
+  setValue("m-actual-v", env.bus_voltage_kv, 2);
+  setValue("m-actual-i", env.line_current_a, 1);
+  setValue("m-actual-p", env.active_power_mw, 2);
+  // 底座 shared["reactive_power_var"] 实际按 Mvar 存储（对应场景 environment.load_reactive_mvar）
+  setValue("m-actual-q", env.reactive_power_var, 3);
+  setValue("m-actual-t", env.ambient_temp_c, 1);
 }
 
 /* 更新右下角事件告警流 */
@@ -573,33 +709,317 @@ function updateAlertFeed(data) {
     .join("");
 }
 
-/* 拓扑坐标表（工业逻辑优化：授时系统-合并单元-电流互感器严格垂直对齐；无功补偿-电压互感器垂直对齐） */
-const NODE_COORDINATES = {
-  // === 站控层 (Y: 55) ===
-  station:    { x: 280, y: 55 },   // 站端监控 (对接 prot & mc)
-  time_svc:   { x: 650, y: 55 },   // 授时系统 (X:650，垂直向下对齐 mu 和 ct_current)
-
-  // === 间隔层 (Y: 190) ===
-  prot:       { x: 180, y: 190 },  // 保护装置 (直通 ctl_brk)
-  mc:         { x: 400, y: 190 },  // 测控装置 (接收 mu 遥测，下发三路控制)
-
-  // === 过程层 - 二次采集/控制层 (Y: 330) ===
-  ctl_brk:    { x: 80,  y: 330 },  // 断路器智能终端 (X:80，正下方垂直引至 brk)
-  ctl_tap:    { x: 230, y: 330 },  // 分接开关接口 (X:230，正下方垂直引至 tap)
-  ctl_cool:   { x: 380, y: 330 },  // 冷却系统接口 (X:380，正下方垂直引至 cool)
-  mu:         { x: 650, y: 330 },  // 合并单元 (X:650，正上方 time_svc，正下方 ct_current)
-  comp:       { x: 790, y: 330 },  // 无功补偿支路 (X:790，垂直对齐下方 vt_voltage)
-
-  // === 过程层 - 一次主设备与传感器本体 (Y: 480) ===
-  brk:        { x: 80,  y: 480 },  // 10kV断路器 (垂直对齐 ctl_brk)
-  tap:        { x: 230, y: 480 },  // 主变压器 (垂直对齐 ctl_tap)
-  cool:       { x: 380, y: 480 },  // 冷却风机 (垂直对齐 ctl_cool)
-  oil_temp:   { x: 510, y: 480 },  // 油温传感器 (贴近变压器测温，斜向送往 mu)
-  ct_current: { x: 650, y: 480 },  // 电流互感器 (X:650，正上方垂直汇入 mu)
-  vt_voltage: { x: 790, y: 480 },  // 电压互感器 (X:790，垂直对齐上方 comp)
+/* 拓扑版式随场景加载：节点坐标取 device.layout，分区带取 layout.layers；
+   场景未声明时按设备所在层自动推导，保证新增场景无需改前端即可显示。 */
+const NODE_COORDINATES = {};           // 运行期由 applyScenarioLayout 填充
+const NODE_SIZE = { w: 90, h: 48 };
+const LAYER_ORDER = ["external", "station", "bay", "process"];
+const LAYER_TITLES = {
+  external: "外界层 (EXTERNAL LAYER)",
+  station: "站控层 (STATION LAYER)",
+  bay: "间隔层 (BAY LAYER)",
+  process: "过程层 (PROCESS LAYER - 感知 / 采集 / 执行 / 一次)",
+};
+const LINK_TYPE_META = {
+  wired: { label: "站内网络总线", cls: "line-wired", title: "站内以太网数字通信总线 (MMS/GOOSE/SV)" },
+  wireless: { label: "无线链路", cls: "line-wireless", title: "跨站与星地无线链路（授时卫星↔授时系统、其他电站↔站端监控）" },
+  interference: { label: "电磁干扰", cls: "line-interference", title: "电磁攻击节点对电流互感器的干扰耦合（红色虚线，手动触发）" },
+  hardwire: { label: "控制硬接线", cls: "line-hardwire", title: "控制接口至一次设备电磁线圈的硬接线控制回路" },
+  electrical: { label: "电气主回路", cls: "line-elec", title: "一次主干回路高压电气主接线" },
+  physical: { label: "热传导耦合", cls: "line-physical", title: "变压器本体热传导至油温计的物理接触测量关系" },
 };
 
+/* 解析节点坐标：优先使用场景声明，缺失坐标的设备按所在层自动补位 */
+function resolveNodeCoordinates(devices, layout) {
+  const declaredBands = {};
+  (Array.isArray(layout.layers) ? layout.layers : []).forEach((band) => {
+    if (band && band.key) declaredBands[band.key] = band;
+  });
+
+  const coords = {};
+  const counters = {};
+  devices.forEach((dev) => {
+    const id = dev.device_id;
+    const declared = dev.layout || {};
+    if (typeof declared.x === "number" && typeof declared.y === "number") {
+      coords[id] = { x: declared.x, y: declared.y };
+      return;
+    }
+    const layer = dev.layer || "process";
+    const index = counters[layer] || 0;
+    counters[layer] = index + 1;
+    const band = declaredBands[layer];
+    if (band) {
+      coords[id] = { x: Number(band.x || 0) + 80 + index * 150, y: Number(band.y || 0) + 45 };
+    } else {
+      const row = Math.max(0, LAYER_ORDER.indexOf(layer));
+      coords[id] = { x: 80 + index * 150, y: 45 + row * 140 };
+    }
+  });
+  return coords;
+}
+
+/* 解析分区带：场景声明优先，否则按各层设备的外接矩形自动推导 */
+function resolveLayerBands(layout, devices) {
+  const declared = Array.isArray(layout.layers) ? layout.layers : null;
+  if (declared && declared.length) return declared;
+
+  const groups = new Map();
+  devices.forEach((dev) => {
+    const coord = NODE_COORDINATES[dev.device_id];
+    if (!coord) return;
+    const key = dev.layer || "other";
+    if (!groups.has(key)) {
+      groups.set(key, { key, minX: coord.x, minY: coord.y, maxX: coord.x, maxY: coord.y });
+    }
+    const group = groups.get(key);
+    group.minX = Math.min(group.minX, coord.x);
+    group.minY = Math.min(group.minY, coord.y);
+    group.maxX = Math.max(group.maxX, coord.x + NODE_SIZE.w);
+    group.maxY = Math.max(group.maxY, coord.y + NODE_SIZE.h);
+  });
+
+  const order = LAYER_ORDER.concat([...groups.keys()].filter((key) => !LAYER_ORDER.includes(key)));
+  return order.filter((key) => groups.has(key)).map((key) => {
+    const group = groups.get(key);
+    return {
+      key,
+      title: LAYER_TITLES[key] || key,
+      x: group.minX - 70,
+      y: group.minY - 30,
+      width: group.maxX - group.minX + 140,
+      height: group.maxY - group.minY + 60,
+    };
+  });
+}
+
+/* 渲染分层背景带与标题 */
+function renderLayerBands(bands) {
+  const group = $("#topo-layers");
+  if (!group) return;
+  group.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  bands.forEach((band) => {
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", band.x);
+    rect.setAttribute("y", band.y);
+    rect.setAttribute("width", band.width);
+    rect.setAttribute("height", band.height);
+    rect.setAttribute("rx", "8");
+    rect.setAttribute("class", `layer-band band-${band.key}`);
+    frag.appendChild(rect);
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", Number(band.x) + 15);
+    text.setAttribute("y", Number(band.y) + 23);
+    text.setAttribute("class", "layer-title");
+    text.textContent = band.title || band.key;
+    frag.appendChild(text);
+  });
+  group.appendChild(frag);
+}
+
+/* 画布尺寸由场景版式外接矩形推导，也允许场景用 layout.canvas 覆盖 */
+function applyCanvasSize(layout, bands) {
+  const svg = $("#topo-svg");
+  if (!svg) return;
+  const canvas = layout.canvas || {};
+  let width = Number(canvas.width) || 0;
+  let height = Number(canvas.height) || 0;
+  if (!width || !height) {
+    let maxX = 0;
+    let maxY = 0;
+    bands.forEach((band) => {
+      maxX = Math.max(maxX, Number(band.x || 0) + Number(band.width || 0));
+      maxY = Math.max(maxY, Number(band.y || 0) + Number(band.height || 0));
+    });
+    Object.values(NODE_COORDINATES).forEach((coord) => {
+      maxX = Math.max(maxX, coord.x + NODE_SIZE.w);
+      maxY = Math.max(maxY, coord.y + NODE_SIZE.h);
+    });
+    width = width || maxX + 10;
+    height = height || maxY + 20;
+  }
+  state.canvasSize = { width: Math.round(width), height: Math.round(height) };
+  svg.setAttribute("viewBox", `0 0 ${state.canvasSize.width} ${state.canvasSize.height}`);
+  if (state.viewTouched) applyTopoTransform();
+  else fitTopoToViewport();
+}
+
+/* 应用当前缩放与平移：缩放改 SVG 像素尺寸，平移用 transform，与内容是否溢出无关 */
+function applyTopoTransform() {
+  const svg = $("#topo-svg");
+  if (!svg || !state.canvasSize) return;
+  svg.style.width = `${Math.round(state.canvasSize.width * state.zoom)}px`;
+  svg.style.height = `${Math.round(state.canvasSize.height * state.zoom)}px`;
+  svg.style.transform = `translate(${state.pan.x.toFixed(1)}px, ${state.pan.y.toFixed(1)}px)`;
+  updateViewResetVisibility();
+}
+
+/* “重置视图”仅在比例或位置偏离默认（自动铺满 + 居中）时出现 */
+function updateViewResetVisibility() {
+  const button = $("#zoom-reset");
+  if (!button) return;
+  const rescaled = Math.abs(state.zoom - (state.fitZoom || state.zoom)) > 0.005;
+  const moved = Math.abs(state.pan.x) > 1 || Math.abs(state.pan.y) > 1;
+  button.style.display = rescaled || moved ? "" : "none";
+}
+
+/* 默认自动缩放到铺满视口并居中（长宽取较小比例，因此不会出现滚动条） */
+function fitTopoToViewport() {
+  const viewport = $("#topo-viewport");
+  if (!viewport || !state.canvasSize) return;
+  const width = viewport.clientWidth;
+  const height = viewport.clientHeight;
+  if (width > 0 && height > 0) {
+    const fit = Math.min(width / state.canvasSize.width, height / state.canvasSize.height);
+    state.zoom = Math.min(3, Math.max(0.2, fit));
+  }
+  state.fitZoom = state.zoom;
+  state.pan = { x: 0, y: 0 };
+  applyTopoTransform();
+}
+
+/* 拓扑视口交互：左键拖动自由平移，Ctrl+滚轮以光标为锚点缩放，窗口变化时自动重新铺满 */
+function setupTopoInteraction() {
+  const viewport = $("#topo-viewport");
+  if (!viewport || viewport.dataset.bound === "1") return;
+  viewport.dataset.bound = "1";
+
+  let drag = null;
+  viewport.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest("#zoom-reset")) return; // 点在重置按钮上不触发拖动
+    drag = { x: event.clientX, y: event.clientY, panX: state.pan.x, panY: state.pan.y, moved: false };
+    viewport.classList.add("dragging");
+    event.preventDefault();
+  });
+  window.addEventListener("mousemove", (event) => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      drag.moved = true;
+      state.dragMoved = true;
+    }
+    if (drag.moved) {
+      state.pan = { x: drag.panX + dx, y: drag.panY + dy };
+      state.viewTouched = true;
+      applyTopoTransform();
+    }
+  });
+  window.addEventListener("mouseup", () => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    viewport.classList.remove("dragging");
+    if (moved) setTimeout(() => { state.dragMoved = false; }, 0); // 让紧随的 click 先被抑制
+    else state.dragMoved = false;
+  });
+  viewport.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+    const prevZoom = state.zoom;
+    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const nextZoom = Math.min(3, Math.max(0.2, prevZoom * factor));
+    if (Math.abs(nextZoom - prevZoom) < 1e-6) return;
+
+    // 保持光标下的内容点在缩放前后不动
+    const contentX = state.canvasSize.width / 2 + (localX - rect.width / 2 - state.pan.x) / prevZoom;
+    const contentY = state.canvasSize.height / 2 + (localY - rect.height / 2 - state.pan.y) / prevZoom;
+    state.zoom = nextZoom;
+    state.pan = {
+      x: localX - rect.width / 2 - (contentX - state.canvasSize.width / 2) * nextZoom,
+      y: localY - rect.height / 2 - (contentY - state.canvasSize.height / 2) * nextZoom,
+    };
+    state.viewTouched = true;
+    applyTopoTransform();
+  }, { passive: false });
+
+  window.addEventListener("resize", () => {
+    if (!state.viewTouched) fitTopoToViewport();
+  });
+}
+
+/* 恢复默认视图：自动铺满并居中 */
+function resetTopoView() {
+  state.viewTouched = false;
+  fitTopoToViewport();
+}
+
+/* 图例只展示当前场景实际存在的链路类型；“影响信号”仅在有电磁干扰链路时出现 */
+function renderLinkLegend(links) {
+  const box = $("#legend-links");
+  if (!box) return;
+  const present = [];
+  links.forEach((link) => {
+    const type = link.link_type || "wired";
+    if (!present.includes(type)) present.push(type);
+  });
+  const ordered = Object.keys(LINK_TYPE_META)
+    .filter((type) => present.includes(type))
+    .concat(present.filter((type) => !LINK_TYPE_META[type]));
+  box.innerHTML = ordered.map((type) => {
+    const meta = LINK_TYPE_META[type] || { label: type, cls: "", title: type };
+    return `<span class="legend-item" title="${esc(meta.title)}">`
+      + `<span class="legend-line ${meta.cls}"></span>${esc(meta.label)}</span>`;
+  }).join("");
+
+  const attackItem = $("#legend-attack-particle");
+  if (attackItem) attackItem.style.display = present.includes("interference") ? "" : "none";
+}
+
+/* 应用场景自带版式：节点坐标、分区带、画布、图例 */
+function applyScenarioLayout(topo) {
+  const devices = topo.devices || [];
+  const layout = topo.layout || {};
+
+  Object.keys(NODE_COORDINATES).forEach((key) => delete NODE_COORDINATES[key]);
+  Object.assign(NODE_COORDINATES, resolveNodeCoordinates(devices, layout));
+
+  const bands = resolveLayerBands(layout, devices);
+  renderLayerBands(bands);
+  applyCanvasSize(layout, bands);
+  renderLinkLegend(topo.links || []);
+}
+
+/* 节点外观类型：攻击/检测节点使用固定方框配色 */
+function nodeKindClass(deviceType) {
+  if (deviceType === "em_attack_source") return "node-kind-attack";
+  if (deviceType === "spectrum_detector") return "node-kind-detect";
+  return "";
+}
+
 /* 提取设备即时动态物理指标 */
+/* 感知设备“度数”与“实际值”的对应关系：实际值取自工况真值或一次设备本体 */
+function sensorActualValue(devId, mgmt, env) {
+  if (devId === "ct_current") return env?.line_current_a;
+  if (devId === "vt_voltage") return env?.bus_voltage_kv;
+  if (devId === "oil_temp") return mgmt["tap"]?.state?.oil_temp_c;
+  return null;
+}
+
+/* 度数偏离实际值即视为被攻击篡改，用于节点高亮 */
+function isSensorTampered(devId, mgmt, env) {
+  const state = (mgmt[devId] || {}).state || {};
+  const reading = state.last_value;
+  const actual = sensorActualValue(devId, mgmt, env);
+  if (reading == null || actual == null) return false;
+  return Math.abs(Number(reading) - Number(actual)) > 1e-6;
+}
+
+/* 感知设备展示的是本机采样读数（度数），实际值见“实际工况”图例 */
+function sensorReadingText(state, actualValue, unit, digits) {
+  const reading = state && state.last_value != null ? Number(state.last_value) : null;
+  if (reading == null) {
+    return actualValue != null ? `[${Number(actualValue).toFixed(digits)} ${unit}]` : "";
+  }
+  return `[${reading.toFixed(digits)} ${unit}]`;
+}
+
 function getDeviceDynamicText(devId, mgmt, env) {
   const devMgmt = mgmt[devId] || {};
   const s = devMgmt.state || {};
@@ -621,18 +1041,15 @@ function getDeviceDynamicText(devId, mgmt, env) {
     return s.connected ? "[补偿投入]" : "[补偿切除]";
   }
 
-  // 传感器读数
+  // 传感器读数（度数）：显示本机采样结果，可能已被攻击篡改
   if (devId === "ct_current") {
-    const i = env?.line_current_a != null ? env.line_current_a.toFixed(1) : "0.0";
-    return `[${i} A]`;
+    return sensorReadingText(s, env?.line_current_a, "A", 1);
   }
   if (devId === "vt_voltage") {
-    const v = env?.bus_voltage_kv != null ? env.bus_voltage_kv.toFixed(1) : "10.0";
-    return `[${v} kV]`;
+    return sensorReadingText(s, env?.bus_voltage_kv, "kV", 1);
   }
   if (devId === "oil_temp") {
-    const t = mgmt["tap"]?.state?.oil_temp_c != null ? mgmt["tap"].state.oil_temp_c.toFixed(1) : "40.0";
-    return `[${t} ℃]`;
+    return sensorReadingText(s, mgmt["tap"]?.state?.oil_temp_c, "℃", 1);
   }
   if (devId === "mu") {
     return "[采集合并]";
@@ -654,6 +1071,12 @@ function getDeviceDynamicText(devId, mgmt, env) {
   if (devId === "time_svc") {
     return "[GNSS授时]";
   }
+  if (devId === "gnss_sat" || devId === "peer_station") {
+    return "";
+  }
+  if (devId === "spectrum_detect_node") {
+    return "频谱检测";
+  }
 
   return "";
 }
@@ -666,6 +1089,17 @@ function renderTopology(data) {
   const mgmt = data.management || {};
   const env = data.environment || {};
   const recList = data.recognition || [];
+
+  // 切换运行/场景时重建拓扑 DOM，避免沿用上一个场景的节点
+  if (state.renderedRunId !== data.run_id) {
+    state.renderedRunId = data.run_id;
+    state.renderedTopologyOnce = false;
+    state.selectedDeviceId = null;
+    state.viewTouched = false; // 切换场景时重新自动铺满并居中
+    state.pan = { x: 0, y: 0 };
+  }
+  // 版式（节点坐标、分区带、画布、图例）全部来自当前场景数据
+  applyScenarioLayout(topo);
 
   const attackedDeviceIds = new Set();
   const suspectDeviceIds = new Set();
@@ -728,10 +1162,12 @@ function renderTopology(data) {
       else if (suspectDeviceIds.has(id)) statusClass = "status-suspect";
 
       const isSelected = state.selectedDeviceId === id;
+      const kindClass = nodeKindClass(dev.device_type);
+      const tamperedClass = isSensorTampered(id, mgmt, env) ? "tampered" : "";
       const dynamicText = getDeviceDynamicText(id, mgmt, env);
 
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.setAttribute("class", `topo-node ${statusClass} ${isSelected ? "selected" : ""}`);
+      g.setAttribute("class", `topo-node ${statusClass} ${kindClass} ${tamperedClass} ${isSelected ? "selected" : ""}`);
       g.setAttribute("transform", `translate(${coord.x}, ${coord.y})`);
       g.setAttribute("data-device-id", id);
 
@@ -742,6 +1178,7 @@ function renderTopology(data) {
       `;
 
       g.addEventListener("click", () => {
+        if (state.dragMoved) return; // 刚拖动过视口，避免误选设备
         state.selectedDeviceId = id;
         document.querySelectorAll(".topo-node").forEach((node) => node.classList.remove("selected"));
         g.classList.add("selected");
@@ -768,7 +1205,9 @@ function renderTopology(data) {
       else if (suspectDeviceIds.has(id)) statusClass = "status-suspect";
 
       const isSelected = state.selectedDeviceId === id;
-      g.setAttribute("class", `topo-node ${statusClass} ${isSelected ? "selected" : ""}`);
+      const kindClass = nodeKindClass(dev.device_type);
+      const tamperedClass = isSensorTampered(id, mgmt, env) ? "tampered" : "";
+      g.setAttribute("class", `topo-node ${statusClass} ${kindClass} ${tamperedClass} ${isSelected ? "selected" : ""}`);
 
       const txtElem = $(`#node-text-${id}`);
       if (txtElem) {
@@ -781,18 +1220,94 @@ function renderTopology(data) {
 
 /* 粒子生命周期与平滑插值管理器：基于唯一 message_id 追踪生命周期，杜绝步进突变跳动 */
 const particleMap = new Map();
+const packetMessageMap = new Map();
+const particleNodeMap = new Map();
+const interferenceParticles = new Map();
 let animFrameId = null;
+/* 动画时钟：只在仿真运行时推进，暂停/结束后冻结，报文圆点停在原处便于点击 */
+let animClock = 0;
+let animLastFrame = 0;
+
+function removeParticleNode(key) {
+  const node = particleNodeMap.get(key);
+  if (node) {
+    node.remove();
+    particleNodeMap.delete(key);
+  }
+}
+
+function clearParticleNodes() {
+  particleNodeMap.forEach((node) => node.remove());
+  particleNodeMap.clear();
+}
+
+function ensureParticleNode(packetLayer, key, category, radius) {
+  let node = particleNodeMap.get(key);
+  if (!node) {
+    node = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    node.setAttribute("class", "msg-particle-group");
+    node.setAttribute("role", "button");
+
+    const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    hit.setAttribute("class", "msg-particle-hit");
+    hit.setAttribute("r", "22");
+    node.appendChild(hit);
+
+    const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    halo.setAttribute("class", "msg-particle-halo");
+    halo.setAttribute("r", "11");
+    node.appendChild(halo);
+
+    const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    particle.setAttribute("class", "msg-particle");
+    particle.setAttribute("r", radius);
+    node.appendChild(particle);
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("class", "msg-particle-label");
+    label.setAttribute("x", "0");
+    label.setAttribute("y", "-17");
+    label.setAttribute("text-anchor", "middle");
+    label.textContent = "点击查看报文";
+    node.appendChild(label);
+
+    packetLayer.appendChild(node);
+    particleNodeMap.set(key, node);
+  }
+  node.setAttribute("class", `msg-particle-group ${category}`);
+  const particle = node.querySelector(".msg-particle");
+  if (particle) particle.setAttribute("r", radius);
+  return node;
+}
+
+function syncPacketSelection() {
+  particleNodeMap.forEach((node) => {
+    const messageId = node.getAttribute("data-message-id");
+    const isSelected = Boolean(messageId) && messageId === state.selectedPacketMessageId;
+    node.classList.toggle("selected", isSelected);
+    if (messageId) node.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    else node.removeAttribute("aria-pressed");
+  });
+}
 
 function animateParticles(now) {
+  // 时钟只在运行中前进：暂停时针停住，报文圆点冻结在暂停那一刻的位置
+  const delta = animLastFrame ? Math.min(now - animLastFrame, 200) : 0;
+  animLastFrame = now;
+  const isRunning = state.systemData?.status === "running";
+  if (isRunning) animClock += delta;
+  const clock = animClock;
+
   const packetLayer = $("#topo-packets");
   if (packetLayer) {
-    // 渲染存活的粒子
+    // 每帧只更新持久节点，避免点击目标在 pointerdown 与 click 之间被销毁。
     const toDelete = [];
-    let frag = document.createDocumentFragment();
+    const activeNodeKeys = new Set();
 
     particleMap.forEach((p, id) => {
       if (state.particleFilter !== "all" && p.category !== state.particleFilter) return;
-      const elapsed = now - p.birthTime;
+
+      const elapsed = clock - p.birthTime;
       const progress = Math.min(elapsed / p.duration, 1.0);
 
       // 报文已到达或被移除且已走完路径
@@ -800,9 +1315,9 @@ function animateParticles(now) {
         if (p.isDead) {
           toDelete.push(id);
           return;
-        } else {
-          // 若仍在传输队列中，循环继续推进流动
-          p.birthTime = now;
+        } else if (isRunning) {
+          // 若仍在传输队列中，运行中循环继续推进流动；暂停时停在终点
+          p.birthTime = clock;
         }
       }
 
@@ -815,18 +1330,48 @@ function animateParticles(now) {
       if (progress < 0.15) opacity = progress / 0.15;
       else if (progress > 0.85) opacity = (1.0 - progress) / 0.15;
 
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", curX.toFixed(1));
-      circle.setAttribute("cy", curY.toFixed(1));
-      circle.setAttribute("r", "4.5");
-      circle.setAttribute("class", `msg-particle ${p.category}`);
-      circle.setAttribute("opacity", opacity.toFixed(2));
-      frag.appendChild(circle);
+      const nodeKey = `msg:${id}`;
+      activeNodeKeys.add(nodeKey);
+      const group = ensureParticleNode(packetLayer, nodeKey, p.category, "4.5");
+      group.setAttribute("transform", `translate(${curX.toFixed(1)} ${curY.toFixed(1)})`);
+      if (p.messageId && packetMessageMap.has(p.messageId)) {
+        group.setAttribute("data-message-id", p.messageId);
+        group.setAttribute("aria-label", `查看报文 ${p.messageId}`);
+      } else {
+        group.removeAttribute("data-message-id");
+        group.removeAttribute("aria-label");
+      }
+      group.setAttribute("opacity", opacity.toFixed(2));
+      const isSelected = Boolean(p.messageId) && p.messageId === state.selectedPacketMessageId;
+      group.classList.toggle("selected", isSelected);
+      if (p.messageId) group.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      else group.removeAttribute("aria-pressed");
     });
 
-    toDelete.forEach((id) => particleMap.delete(id));
-    packetLayer.innerHTML = "";
-    packetLayer.appendChild(frag);
+    // 攻击影响信号：攻击进行时沿电磁干扰链路持续流动（不受报文过滤器影响）
+    interferenceParticles.forEach((p, key) => {
+      const progress = ((clock - p.birthTime) / p.duration + p.offset) % 1.0;
+      const nodeKey = `ifx:${key}`;
+      activeNodeKeys.add(nodeKey);
+      const group = ensureParticleNode(packetLayer, nodeKey, "attack", "4.2");
+      const ifxX = (p.x1 + (p.x2 - p.x1) * progress).toFixed(1);
+      const ifxY = (p.y1 + (p.y2 - p.y1) * progress).toFixed(1);
+      group.setAttribute("transform", `translate(${ifxX} ${ifxY})`);
+      group.removeAttribute("data-message-id");
+      group.removeAttribute("aria-label");
+      group.removeAttribute("aria-pressed");
+      group.classList.remove("selected");
+      group.setAttribute("opacity", "0.92");
+    });
+
+    toDelete.forEach((id) => {
+      particleMap.delete(id);
+      packetMessageMap.delete(id);
+      removeParticleNode(`msg:${id}`);
+    });
+    Array.from(particleNodeMap.keys()).forEach((key) => {
+      if (!activeNodeKeys.has(key)) removeParticleNode(key);
+    });
   }
 
   animFrameId = requestAnimationFrame(animateParticles);
@@ -841,18 +1386,24 @@ function updatePacketFlow(data) {
   // 系统终止/停止或回放结束：彻底清理在途报文粒子，杜绝幽灵粒子传递
   if (data.status === "finished" || data.status === "stopped") {
     particleMap.clear();
-    const packetLayer = $("#topo-packets");
-    if (packetLayer) packetLayer.innerHTML = "";
+    packetMessageMap.clear();
+    interferenceParticles.clear();
+    clearParticleNodes();
     return;
   }
 
+  // 暂停时不增删报文粒子，保持暂停那一刻的画面，方便点击在途报文
+  if (data.status !== "running") return;
+
   const inFlights = data.in_flight_messages || [];
   const incomingIds = new Set();
-  const now = performance.now();
 
   inFlights.slice(0, 24).forEach((msg, idx) => {
-    const id = msg.message_id || `${msg.sender_id}->${msg.receiver_id}`;
+    const messageId = msg.message_id || "";
+    const id = messageId || `${msg.sender_id}->${msg.receiver_id}`;
     incomingIds.add(id);
+
+    if (messageId) packetMessageMap.set(messageId, msg);
 
     // 如果该报文已在航线中，仅更新状态，绝对不重置 birthTime，确保运动连续
     if (particleMap.has(id)) {
@@ -868,13 +1419,14 @@ function updatePacketFlow(data) {
 
     particleMap.set(id, {
       id: id,
+      messageId: messageId,
       x1: src.x + 45,
       y1: src.y + 24,
       x2: dst.x + 45,
       y2: dst.y + 24,
       businessType: msg.business_type || "unknown",
       category: particleCategory(msg.business_type || "unknown"),
-      birthTime: now,
+      birthTime: animClock,
       duration: 1100, // 约1.1秒平滑穿越
       isDead: false,
     });
@@ -885,6 +1437,67 @@ function updatePacketFlow(data) {
     if (!incomingIds.has(id)) {
       p.isDead = true;
     }
+  });
+}
+
+/* 攻击影响信号：攻击节点发射期间，在电磁干扰链路上持续发送流动信号 */
+function endpointDeviceId(endpoint) {
+  return Array.isArray(endpoint) ? endpoint[0] : endpoint;
+}
+
+function isAttackNodeEmitting(mgmt, deviceId) {
+  const device = mgmt[deviceId];
+  return !!device && device.device_type === "em_attack_source"
+    && !!(device.state && device.state.emitting);
+}
+
+function updateInterferenceFlow(data) {
+  if (data.status === "finished" || data.status === "stopped") {
+    interferenceParticles.clear();
+    return;
+  }
+
+  const mgmt = data.management || {};
+  const links = (data.topology || {}).links || [];
+  const wanted = new Set();
+
+  links.forEach((link) => {
+    if (link.link_type !== "interference") return;
+    const aId = endpointDeviceId(link.endpoint_a);
+    const bId = endpointDeviceId(link.endpoint_b);
+
+    // 信号方向固定由攻击节点流向被干扰设备
+    let fromId = "";
+    let toId = "";
+    if (isAttackNodeEmitting(mgmt, aId)) { fromId = aId; toId = bId; }
+    else if (isAttackNodeEmitting(mgmt, bId)) { fromId = bId; toId = aId; }
+    if (!fromId) return;
+
+    const src = NODE_COORDINATES[fromId];
+    const dst = NODE_COORDINATES[toId];
+    if (!src || !dst) return;
+
+    const count = 4; // 链路上均匀分布的影响信号粒子
+    for (let i = 0; i < count; i += 1) {
+      const key = `ifx:${link.link_id}:${i}`;
+      wanted.add(key);
+      if (!interferenceParticles.has(key)) {
+        interferenceParticles.set(key, {
+          x1: src.x + 45,
+          y1: src.y + 24,
+          x2: dst.x + 45,
+          y2: dst.y + 24,
+          offset: i / count,
+          birthTime: animClock,
+          duration: 1400,
+        });
+      }
+    }
+  });
+
+  // 攻击结束或链路消失后立即撤掉影响信号
+  Array.from(interferenceParticles.keys()).forEach((key) => {
+    if (!wanted.has(key)) interferenceParticles.delete(key);
   });
 }
 
@@ -1313,6 +1926,10 @@ function renderOtherView(view, data) {
     <div class="sub-empty">该视图暂未提供可视化展示</div>`;
 }
 function bindEvents() {
+  setupTopoInteraction();
+  const zoomReset = $("#zoom-reset");
+  if (zoomReset) zoomReset.addEventListener("click", resetTopoView);
+
   $("#create-run").addEventListener("click", createRun);
 
   document.querySelectorAll("[data-action]").forEach((button) => {
@@ -1326,12 +1943,43 @@ function bindEvents() {
     updateAutoStep(e.target.checked);
   });
 
+  const packetLayer = $("#topo-packets");
+  if (packetLayer) {
+    packetLayer.addEventListener("click", (event) => {
+      if (state.dragMoved) return;
+      const particle = event.target.closest && event.target.closest("[data-message-id]");
+      if (!particle) return;
+      const message = packetMessageMap.get(particle.getAttribute("data-message-id"));
+      if (!message) return;
+      event.stopPropagation();
+      openPacketInspector(message);
+    });
+  }
+
+  const packetInspector = $("#packet-inspector");
+  if (packetInspector) {
+    const closeButton = $("#packet-inspector-close");
+    if (closeButton) closeButton.addEventListener("click", closePacketInspector);
+    document.querySelectorAll("[data-packet-close]").forEach((node) => {
+      node.addEventListener("click", closePacketInspector);
+    });
+    const copyButton = $("#packet-inspector-copy");
+    if (copyButton) copyButton.addEventListener("click", copyPacketJson);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePacketInspector();
+  });
+
   const particleFilter = $("#particle-filter");
   if (particleFilter) {
     particleFilter.addEventListener("change", (e) => {
       state.particleFilter = e.target.value;
-      const packetLayer = $("#topo-packets");
-      if (packetLayer) packetLayer.innerHTML = "";
+      particleMap.forEach((particle, id) => {
+        if (state.particleFilter !== "all" && particle.category !== state.particleFilter) {
+          removeParticleNode(`msg:${id}`);
+        }
+      });
     });
   }
 

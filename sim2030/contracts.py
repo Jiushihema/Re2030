@@ -38,6 +38,8 @@ class DeviceSpec:
     initial_state: Dict[str, Any] = field(default_factory=dict)
     capabilities: List[Capability] = field(default_factory=list)
     references: List[str] = field(default_factory=list)
+    # 呈现用坐标：{"x": int, "y": int}；由场景自带，供演示平面直接摆放节点。
+    layout: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DeviceSpec":
@@ -52,6 +54,7 @@ class DeviceSpec:
             initial_state=dict(data.get("initial_state", {})),
             capabilities=[Capability(**c) if isinstance(c, dict) else c for c in caps],
             references=list(data.get("references", [])),
+            layout=dict(data.get("layout", {})),
         )
 
 
@@ -244,6 +247,8 @@ class ScenarioConfig:
     observations: Dict[str, Any] = field(default_factory=dict)
     evaluation: Dict[str, Any] = field(default_factory=dict)
     references: Dict[str, Any] = field(default_factory=dict)
+    # 场景自带拓扑版式：{"layers": [...], "canvas": {...}}，缺省时由演示平面自行推导。
+    layout: Dict[str, Any] = field(default_factory=dict)
 
 
 def event_key(provider_id: str, event_id: str) -> str:

@@ -15,7 +15,7 @@
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  
+
   --accent-cyan: #06b6d4;
   --accent-blue: #3b82f6;
   --accent-green: #10b981;
@@ -708,6 +708,23 @@ body {
   font-family: Consolas, monospace;
 }
 
+.legend-btn {
+  background: rgba(15, 28, 48, 0.72);
+  border: 1px solid rgba(30, 58, 95, 0.75);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.legend-btn:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #e2e8f0;
+}
+
 .data-cell {
   display: inline-flex;
   align-items: baseline;
@@ -755,6 +772,14 @@ body {
   margin-right: 0;
 }
 
+/* “实际工况”数值：等宽对齐，便于与传感器度数对照 */
+.legend-item b {
+  color: #e2e8f0;
+  font-weight: 600;
+  font-family: Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .legend-dot {
   width: 10px;
   height: 10px;
@@ -781,6 +806,14 @@ body {
 }
 
 .line-wired { background: #0ea5e9; box-shadow: 0 0 4px #0ea5e9; }
+.line-wireless {
+  background: repeating-linear-gradient(90deg, #f472b6, #f472b6 5px, transparent 5px, transparent 9px);
+  box-shadow: 0 0 4px #f472b6;
+}
+.line-interference {
+  background: repeating-linear-gradient(90deg, #ef4444, #ef4444 5px, transparent 5px, transparent 9px);
+  box-shadow: 0 0 4px #ef4444;
+}
 .line-hardwire {
   background: repeating-linear-gradient(90deg, #eab308, #eab308 4px, transparent 4px, transparent 7px);
 }
@@ -793,11 +826,38 @@ body {
   background: repeating-linear-gradient(90deg, #94a3b8, #94a3b8 2px, transparent 2px, transparent 5px);
 }
 
+/* 拓扑视口：默认自动缩放铺满并居中，不出现滚动条；平移与缩放由脚本用 transform 处理 */
+.topo-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topo-viewport.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* 视图偏离默认时才出现的“重置视图”，固定在拓扑框右上角 */
+.topo-reset-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 6;
+  backdrop-filter: blur(4px);
+}
+
 .topo-svg {
-  width: 100%;
-  height: 100%;
-  min-height: 520px;
   display: block;
+  flex: 0 0 auto;
+  width: 920px;
+  height: 780px;
+  transform-origin: center center;
 }
 
 /* SVG 样式与平稳过渡 */
@@ -807,6 +867,7 @@ body {
   stroke-dasharray: 4 4;
 }
 
+.band-external { fill: rgba(167, 139, 250, 0.12); }
 .band-station { fill: rgba(30, 58, 138, 0.15); }
 .band-bay { fill: rgba(15, 118, 110, 0.15); }
 .band-process { fill: rgba(55, 48, 163, 0.15); }
@@ -851,6 +912,22 @@ body {
   stroke-width: 1.8;
 }
 
+.topo-link.wireless {
+  stroke: #f472b6;
+  stroke-dasharray: 6 4;
+  stroke-opacity: 0.9;
+  stroke-width: 2.0;
+  filter: drop-shadow(0 0 4px rgba(244, 114, 182, 0.6));
+}
+
+.topo-link.interference {
+  stroke: #ef4444;
+  stroke-dasharray: 6 4;
+  stroke-opacity: 0.95;
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.65));
+}
+
 .topo-node {
   cursor: pointer;
 }
@@ -883,6 +960,19 @@ body {
   filter: url(#glow-danger);
 }
 
+/* 外界攻防节点：攻击节点固定红框、检测节点固定蓝框 */
+.topo-node.node-kind-attack rect {
+  stroke: #ef4444;
+  stroke-width: 2.2;
+  fill: #2d1115;
+}
+
+.topo-node.node-kind-detect rect {
+  stroke: #3b82f6;
+  stroke-width: 2.2;
+  fill: #0b1f3a;
+}
+
 .topo-node.selected rect {
   stroke: #38bdf8;
   stroke-width: 2.5;
@@ -909,6 +999,12 @@ body {
   font-weight: 500;
   font-family: Consolas, monospace;
   pointer-events: none;
+}
+
+/* 传感器“度数”偏离实际值（被攻击篡改）时高亮，提示读数不可信 */
+.topo-node.tampered .node-status-text {
+  fill: #f59e0b;
+  font-weight: 700;
 }
 
 .sub-view-container {
@@ -1052,23 +1148,66 @@ body {
   color: var(--text-secondary);
 }
 
-/* 报文流粒子动画 */
-.msg-particle {
-  fill: #64748b;
-  filter: drop-shadow(0 0 3px #64748b);
+/* 报文流粒子动画：大点击热区 + 悬停/选中反馈 */
+.msg-particle-group {
+  color: #64748b;
   pointer-events: none;
 }
-.msg-particle.data {
-  fill: #22c55e;
-  filter: drop-shadow(0 0 5px #22c55e);
+.msg-particle-group.data { color: #22c55e; }
+.msg-particle-group.command { color: #f59e0b; }
+.msg-particle-group.attack { color: #ef4444; }
+.msg-particle-group[data-message-id] {
+  cursor: pointer;
+  pointer-events: visiblePainted;
 }
-.msg-particle.command {
-  fill: #f59e0b;
-  filter: drop-shadow(0 0 5px #f59e0b);
+.msg-particle-hit {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: none;
 }
-.msg-particle.other {
-  fill: #64748b;
-  filter: drop-shadow(0 0 3px #64748b);
+.msg-particle-group[data-message-id] .msg-particle-hit {
+  pointer-events: all;
+}
+.msg-particle-halo {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+.msg-particle {
+  fill: currentColor;
+  filter: drop-shadow(0 0 5px currentColor);
+  pointer-events: none;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+.msg-particle-label {
+  fill: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(2, 6, 23, 0.96);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.msg-particle-group[data-message-id]:hover .msg-particle-halo,
+.msg-particle-group[data-message-id].selected .msg-particle-halo {
+  stroke: #f8fafc;
+  stroke-width: 2.2px;
+  opacity: 0.96;
+}
+.msg-particle-group[data-message-id]:hover .msg-particle,
+.msg-particle-group[data-message-id].selected .msg-particle {
+  stroke: #f8fafc;
+  stroke-width: 1.5px;
+}
+.msg-particle-group[data-message-id]:hover .msg-particle-label,
+.msg-particle-group[data-message-id].selected .msg-particle-label {
+  opacity: 1;
 }
 
 .particle-dot {
@@ -1082,6 +1221,7 @@ body {
 .particle-dot.data { background: #22c55e; color: #22c55e; }
 .particle-dot.command { background: #f59e0b; color: #f59e0b; }
 .particle-dot.other { background: #64748b; color: #64748b; }
+.particle-dot.attack { background: #ef4444; color: #ef4444; }
 
 .particle-filter-box {
   display: flex;
@@ -1233,4 +1373,229 @@ body {
   padding: 28px 12px;
   border: 1px dashed var(--border-color);
   border-radius: 6px;
+}
+
+/* 内部报文详情弹窗：仅展示后端运行的 Message 队列内容 */
+body.packet-inspector-open {
+  overflow: hidden;
+}
+
+.packet-inspector {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+}
+
+.packet-inspector.open {
+  display: block;
+}
+
+.packet-inspector-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.76);
+  backdrop-filter: blur(4px);
+}
+
+.packet-inspector-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(180deg, #101d31 0%, #0b1526 100%);
+  border: 1px solid #2563eb;
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.72), 0 0 24px rgba(6, 182, 212, 0.12);
+  animation: packet-panel-in 160ms ease-out;
+}
+
+@keyframes packet-panel-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.packet-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.packet-inspector-kicker {
+  margin-bottom: 4px;
+  color: var(--accent-cyan);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.packet-inspector-header h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 17px;
+}
+
+.packet-inspector-close {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.packet-inspector-close:hover,
+.packet-inspector-close:focus-visible {
+  border-color: var(--accent-cyan);
+  color: #fff;
+  outline: none;
+}
+
+.packet-inspector-notice {
+  margin: 0;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(6, 182, 212, 0.07);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.packet-inspector-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.packet-field-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.packet-field {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+
+.packet-field-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.packet-field-value {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #dbeafe;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.packet-payload-section {
+  margin-top: 14px;
+}
+
+.packet-payload-title {
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.packet-payload-json {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: #07101f;
+  color: #a7f3d0;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.packet-inspector-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.packet-inspector-copy-status {
+  min-width: 54px;
+  color: var(--accent-green);
+  font-size: 12px;
+  text-align: right;
+}
+
+.packet-inspector-copy {
+  padding: 7px 14px;
+  border: 1px solid #0891b2;
+  border-radius: 6px;
+  background: rgba(6, 182, 212, 0.14);
+  color: #a5f3fc;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.packet-inspector-copy:hover,
+.packet-inspector-copy:focus-visible {
+  background: rgba(6, 182, 212, 0.28);
+  outline: none;
+}
+
+.packet-inspector-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 1100;
+  padding: 8px 14px;
+  border: 1px solid rgba(6, 182, 212, 0.55);
+  border-radius: 999px;
+  background: rgba(8, 47, 73, 0.96);
+  color: #cffafe;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.packet-inspector-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 680px) {
+  .packet-field-list {
+    grid-template-columns: 1fr;
+  }
+
+  .packet-inspector-panel {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 24px);
+  }
 }

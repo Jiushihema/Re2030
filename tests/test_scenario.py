@@ -53,8 +53,39 @@ class TestLoadScenario(unittest.TestCase):
         config = load_scenario(LIVE_SCENARIO_PATH)
         self.assertEqual(config.scenario_id, "substation-live")
         self.assertEqual(config.name, "变电站场景")
-        self.assertEqual(len(config.devices), 15)
-        self.assertEqual(len(config.links), 17)
+        self.assertEqual(len(config.devices), 17)
+        self.assertEqual(len(config.links), 19)
+
+    def test_load_live_scenario_external_layer(self):
+        """外界层应包含授时卫星与其他电站，且均通过无线链路接入站内。"""
+        config = load_scenario(LIVE_SCENARIO_PATH)
+        external = [d for d in config.devices if d.layer == "external"]
+        self.assertEqual({d.device_id for d in external}, {"gnss_sat", "peer_station"})
+        self.assertEqual({d.device_type for d in external}, {"time_satellite", "remote_substation"})
+        self.assertEqual(validate_scenario(config), [])
+
+        wireless = [link for link in config.links if link.link_type == "wireless"]
+        self.assertEqual({link.link_id for link in wireless}, {"L-gnss-time_svc", "L-peer-station"})
+        endpoints = {frozenset((link.endpoint_a[0], link.endpoint_b[0])) for link in wireless}
+        self.assertEqual(endpoints, {frozenset(("gnss_sat", "time_svc")), frozenset(("peer_station", "station"))})
+
+    def test_live_scenario_carries_layout(self):
+        """拓扑版式应随场景下发：分层带几何 + 每台设备坐标。"""
+        config = load_scenario(LIVE_SCENARIO_PATH)
+        layers = config.layout.get("layers") or []
+        self.assertTrue(layers)
+        for layer in layers:
+            for key in ("x", "y", "width", "height"):
+                self.assertIsInstance(layer.get(key), (int, float))
+        for device in config.devices:
+            self.assertIsInstance(device.layout.get("x"), (int, float))
+            self.assertIsInstance(device.layout.get("y"), (int, float))
+
+    def test_invalid_layout_is_rejected(self):
+        config = load_scenario(SCENARIO_PATH)
+        config.devices[0].layout = {"x": "left", "y": 0}
+        errors = validate_scenario(config)
+        self.assertTrue(any("layout.x" in error for error in errors))
 
 
 class TestValidateScenario(unittest.TestCase):
