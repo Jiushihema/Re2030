@@ -571,6 +571,7 @@ async function loadDeviceControls(deviceId) {
     return;
   }
   syncDevicePanels(state.systemData || {});
+  TimingView.render(state.systemData || {}, deviceId);
   body.innerHTML = '<div class="device-control-empty">正在读取设备控制项…</div>';
   const payload = await api("GET", `/api/runs/${state.runId}/devices/${deviceId}/controls`);
   if (payload.error) {
@@ -591,6 +592,7 @@ function renderDeviceControlPanel(payload, deviceId) {
   }
 
   body.innerHTML = controls.map((control) => {
+    if (control.kind === "toggle") return `<form class="device-control-form timing-toggle" data-control-type="toggle" data-device-id="${esc(deviceId)}"><label><input type="checkbox" data-control-key="${esc(control.key)}" ${control.value ? 'checked' : ''}>${esc(control.label)}</label>${control.reserved ? '<small>预留，暂不参与判定</small>' : ''}</form>`;
     if (control.kind === "parameter") return renderParameterControl(control, deviceId);
     if (control.kind === "command") return renderCommandControl(control, deviceId);
     return "";
@@ -607,7 +609,7 @@ function renderParameterControl(control, deviceId) {
       <div class="form-group">
         <label>${esc(control.label || control.key)}</label>
         <div class="input-with-unit">
-          <input type="number" min="${control.input?.min ?? 0}" step="${control.input?.step ?? 1}" value="${esc(value)}" data-control-key="${esc(control.key)}">
+          <input type="number" min="${control.input?.min ?? 0}" max="${control.input?.max ?? ""}" step="${control.input?.step ?? 1}" value="${esc(value)}" data-control-key="${esc(control.key)}">
           ${unit}
         </div>
       </div>
@@ -636,6 +638,7 @@ function renderCommandControl(control, deviceId) {
 function bindControlPanelEvents() {
   document.querySelectorAll(".device-control-form").forEach((form) => {
     form.addEventListener("submit", submitDeviceControl);
+    if (form.dataset.controlType === "toggle") form.querySelector("input").addEventListener("change", () => form.requestSubmit());
   });
 }
 
@@ -646,10 +649,10 @@ async function submitDeviceControl(event) {
   const deviceId = form.dataset.deviceId;
   const controlType = form.dataset.controlType;
 
-  if (controlType === "parameter") {
+  if (controlType === "parameter" || controlType === "toggle") {
     const input = form.querySelector("[data-control-key]");
     const key = input ? input.dataset.controlKey : "";
-    const value = parseFloat(input ? input.value : "");
+    const value = controlType === "toggle" ? input.checked : parseFloat(input ? input.value : "");
     if (!key || Number.isNaN(value)) {
       setStatus("请输入有效参数值", true);
       return;
@@ -748,6 +751,7 @@ async function refreshViews() {
   renderCyberDemo(data);
   renderGooseLab(data);
   renderGooseReceiver(data);
+  TimingView.render(data, state.selectedDeviceId);
   return true;
 }
 
@@ -1550,6 +1554,17 @@ function sensorReadingText(state, actualValue, unit, digits) {
 
 function getDeviceDynamicText(devId, mgmt, env) {
   const devMgmt = mgmt[devId] || {};
+  if (state.systemData?.topology?.layout?.timing_lab) {
+    const clock = devMgmt.state || {};
+    if (["time_svc", "time_svc_2", "mu", "mu_2"].includes(devId)) {
+      const offset = clock.clock_offset_us ?? clock.timing_offset_us ?? 0;
+      return `[${((clock.local_time_us || 0) / 1e6).toFixed(3)}s · ${offset ? `落后 ${Math.abs(offset) / 1000}ms` : '正常'}]`;
+    }
+    if (devId === 'diff_prot') {
+      const report = devMgmt.timing?.report;
+      return report?.valid ? `[差流 ${report.id_a.toFixed(2)}A · 出口 ${devMgmt.timing.trip_count}次]` : '[等待同编号采样]';
+    }
+  }
   const s = devMgmt.state || {};
   const overview = devMgmt.overview || {};
 
@@ -2384,7 +2399,9 @@ function renderStationMonitor(overview) {
       let text = `来自 <strong>${esc(fromZh)}</strong> · ${esc(typeZh)}`;
       if (action) text += ` · ${esc(zhAction(action))}`;
       const differential = (r.payload || {}).differential;
-      if (differential) {
+      if (differential?.id_a != null) {
+        text += ` · 差流 ${fmtValue(differential.id_a)} A / 制动 ${fmtValue(differential.ir_a)} A`;
+      } else if (differential) {
         text += ` · 差流 ${fmtValue(differential.difference_a)} A / 整定 ${fmtValue(differential.threshold_a)} A`;
       }
       const sources = extractSources(r.payload);
@@ -2578,6 +2595,7 @@ function renderTimeline(data) {
       </div>`);
   };
 
+  if (data.timing_events?.length) push([...data.timing_events].reverse(), "", "授时攻击与差动出口", "#c4b5fd", event => `<div class="sub-card"><div class="sub-card-head"><span>${esc(event.text)}</span><span>${formatUs(event.time_us)}</span></div></div>`);
   if (gooseEvents.length) push([...gooseEvents].reverse(), "", "GOOSE 接收与设备响应", "#67e8f9", event => `<div class="sub-card"><div class="sub-card-head"><span class="sub-card-title">${esc(event.text)}</span><span class="sub-card-time">${(event.time_us / 1000000).toFixed(6)} s</span></div>${event.frame_no ? `<button class="btn btn-secondary" type="button" data-timeline-frame="${event.frame_no}">查看第 ${event.frame_no} 帧</button>` : ""}</div>`);
 
   push(attacks, "🎯", "攻击计划队列", "#f59e0b", (a) => `
@@ -2768,6 +2786,7 @@ function renderOtherView(view, data) {
     <div class="sub-empty">该视图暂未提供可视化展示</div>`;
 }
 function bindEvents() {
+  TimingView.bind({inspect: id => inspectDevice(id), status: text => setStatus(text)});
   setupTopoInteraction();
   const zoomReset = $("#zoom-reset");
   if (zoomReset) zoomReset.addEventListener("click", resetTopoView);

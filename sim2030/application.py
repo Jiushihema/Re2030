@@ -196,7 +196,10 @@ class Application:
             return {"device_id": device_id, "status": "not_found", "reason": "当前没有活动运行"}
         if device_id not in self._device_ids:
             return {"device_id": device_id, "status": "not_found", "reason": f"未知目标设备 {device_id}"}
-        result = self.engine.set_device_parameter(device_id, key, value)
+        try:
+            result = self.engine.set_device_parameter(device_id, key, value)
+        except ValueError as exc:
+            return {"device_id": device_id, "status": "rejected", "reason": str(exc)}
         self._last_step_summary = self._summary()
         return result
 
@@ -372,6 +375,8 @@ class Application:
         if self.goose_lab:
             self.goose_lab.advance(self.current_time_us, self.engine)
         result = self.engine.step(self.current_time_us, self.dt_us)
+        if self.config.layout.get("timing_lab"):
+            self.engine.get_device("diff_prot").observe_chain(result)
         if self.goose_lab:
             self.engine.refresh_environment(self.current_time_us, self.dt_us)
             self.goose_lab.observe(self.current_time_us, self.engine, result)
@@ -595,6 +600,7 @@ class Application:
                 "network_state": result.network_state,
                 "environment": environment,
                 "goose_lab": self.goose_lab.view(self.engine) if self.goose_lab else None,
+                "timing_lab": self._timing_view(),
             },
         )
 
@@ -698,6 +704,12 @@ class Application:
                 frame["receiver"] = dict(self.goose_lab.decisions.get(frame["frame_no"], {}))
         return result
 
+    def _timing_view(self):
+        if not self.config or not self.config.layout.get("timing_lab"):
+            return None
+        protection = self.engine.get_device("diff_prot")
+        return protection.snapshot().get("timing")
+
     def _system_view(self) -> Dict[str, Any]:
         config = self.config
         devices = []
@@ -733,6 +745,7 @@ class Application:
             },
             "packet_capture": self._goose_view(),
             "goose_lab": self.goose_lab.view(self.engine) if self.goose_lab else None,
+            "timing_lab": self._timing_view(),
             "management": self.engine.get_management(sorted(self._device_ids)),
             "observations": self._observation_view().get("observations", {}),
             "recognition": [asdict(r) for r in (self.recognition_engine.last_results() if self.recognition_engine else [])],
@@ -755,6 +768,7 @@ class Application:
             "time_us": self.current_time_us,
             "attacks": self._attack_truth_records(),
             "attack_submissions": self._attack_submission_records(),
+            "timing_events": (self._timing_view() or {}).get("events", []),
             "goose_events": sorted(self.goose_lab.events, key=lambda event: event["time_us"]) if self.goose_lab else [],
             "recognition": self._recognition_records(),
             "defense": self._defense_records(),

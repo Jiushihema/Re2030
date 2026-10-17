@@ -81,6 +81,12 @@ def register_device(type_name: str, factory: DeviceFactory) -> None:
 
 
 def create_device(spec: DeviceSpec) -> Device:
+    role = spec.parameters.get("timing_role")
+    if role:
+        from sim2030.timing import FACTORIES
+        if role not in FACTORIES:
+            raise ValueError(f"未知授时实验角色：{role}")
+        return FACTORIES[role](spec)
     factory = DEVICE_TYPES.get(spec.device_type)
     if factory is None:
         raise KeyError(f"未知设备类型 {spec.device_type!r}（device_id={spec.device_id}）")

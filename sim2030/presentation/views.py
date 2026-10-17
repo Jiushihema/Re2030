@@ -109,6 +109,7 @@ def build_system_view(records) -> Dict[str, Any]:
         "environment": environment,
         "in_flight_messages": _derive_in_flight_messages(reader),
         "goose_lab": snapshot.get("goose_lab"),
+        "timing_lab": snapshot.get("timing_lab"),
         "packet_capture": build_goose_view(reader) if manifest.get("layout", {}).get("packet_replay") else None,
         "observations": {
             "event_count": len(events),
@@ -227,6 +228,7 @@ def build_timeline(records) -> Dict[str, Any]:
         "recognitions": recognitions,
         "defenses": defenses,
         "business": business,
+        "timing_events": (_last_truth_snapshot(reader).get("timing_lab") or {}).get("events", []),
         "goose_events": sorted((r for r in reader.read("goose") if r.get("type") == "event"), key=lambda event: event["time_us"]),
     }
 

@@ -1932,3 +1932,38 @@ body.packet-inspector-open {
 .attack-batch-controls { padding: 9px 0; margin-bottom: 10px; border-bottom: 1px solid #334155; }
 .attack-batch-controls label { display: block; color: #b7c9dc; font-size: 11px; margin-bottom: 6px; }
 .attack-batch-controls small { display: block; font-size: 10px; }
+
+/* Timing experiment: compact evidence workbench and independent chain comparison. */
+[hidden].timing-workbench, [hidden].timing-result, [hidden].timing-device-info { display:none; }
+.timing-workbench { flex:0 0 auto; max-height:43%; overflow:auto; border-top:1px solid #28405c; padding:8px 12px; background:#0d192b; }
+.timing-wave-header { display:flex; justify-content:space-between; gap:10px; align-items:center; font-size:12px; }
+.timing-wave-header select { background:#14243a; color:#dbeafe; border:1px solid #37506d; border-radius:4px; padding:3px; }
+.timing-wave-svg { display:block; width:100%; height:145px; }
+.timing-wave-svg text { fill:#94a3b8; font-size:10px; }
+.timing-wave-legend { display:flex; flex-wrap:wrap; gap:14px; font-size:11px; margin-top:5px; }
+.timing-caption, .timing-reference { font-size:11px; line-height:1.65; color:#94a3b8; margin:6px 0; }
+.timing-workbench details { font-size:11px; }
+.timing-workbench table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
+.timing-workbench th, .timing-workbench td { padding:5px; border-bottom:1px solid #24344c; text-align:left; }
+.timing-workbench .mismatch { color:#fda4af; }
+.timing-result { padding-bottom:16px; margin-bottom:12px; border-bottom:1px solid #334155; }
+.timing-result h2 { font-size:15px; color:#bae6fd; margin-bottom:8px; }
+.timing-result h3, .timing-device-info h3 { font-size:12px; color:#c4b5fd; margin:12px 0 6px; }
+.timing-clock-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.timing-clock { display:flex; flex-direction:column; text-align:left; gap:5px; padding:9px 6px; background:#102438; color:#dbeafe; border:1px solid #24445f; border-radius:5px; cursor:pointer; }
+.timing-clock span { font-size:11px; }.timing-clock strong { font-size:12px; font-variant-numeric:tabular-nums; }
+.timing-clock small { font-size:10px; color:#67e8f9; }
+.timing-clock.delayed { background:#301b2c; border-color:#9f3756; }.timing-clock.delayed small { color:#fda4af; }
+.timing-path { padding:8px 0; font-size:10px; color:#a5b4fc; line-height:1.8; }
+.timing-outcome { border-left:3px solid #22d3ee; background:#113047; padding:8px; font-size:12px; }
+.timing-outcome.operated { border-color:#fb7185; background:#3b2030; color:#fecdd3; }
+.timing-quantities { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; font-size:11px; color:#94a3b8; }
+.timing-quantities strong { display:block; margin-top:5px; font-size:19px; color:#e2e8f0; }
+.timing-gate { display:flex; justify-content:space-between; gap:5px; padding:7px 0; border-bottom:1px solid #26354a; font-size:11px; }
+.timing-gate small { display:block; font-size:10px; color:#94a3b8; margin-top:3px; }.timing-gate b { font-size:10px; color:#94a3b8; text-align:right; }.timing-gate.met b { color:#fb7185; }
+.timing-result details, .timing-device-info { font-size:11px; line-height:1.7; color:#b6c7db; margin-top:10px; }
+.timing-result summary, .timing-workbench summary { cursor:pointer; color:#93c5fd; }
+.timing-event-list > div { display:flex; flex-direction:column; gap:3px; padding:7px 0; border-bottom:1px solid #233349; font-size:11px; }.timing-event-list time { color:#64748b; font-variant-numeric:tabular-nums; }
+.timing-toggle { padding:8px 0; border-bottom:1px solid #26354a; font-size:12px; }.timing-toggle label { display:flex; gap:8px; align-items:center; cursor:pointer; }.timing-toggle small { display:block; color:#94a3b8; font-size:10px; padding:5px 0 0 23px; }
+.timing-mode .topo-node.timing-delayed rect { stroke:#fb7185; stroke-width:2; }
+.timing-empty { padding:24px 8px; color:#94a3b8; font-size:12px; }

@@ -95,7 +95,8 @@
         "eval_interval_us": 100000,
         "overcurrent_threshold_a": 200.0,
         "duration_ticks": 2,
-        "value_key": "ct_current"
+        "value_key": "ct_current",
+        "external_trip_replay": true
       }
     },
     {
@@ -117,7 +118,14 @@
         "value_key": "ct_current",
         "compare_mode": "absolute",
         "differential_threshold_a": 10.0,
-        "duration_ticks": 1
+        "duration_ticks": 1,
+        "timing_role": "protection",
+        "minimum_a": 10.0,
+        "slope": 0.2,
+        "minimum_enabled": true,
+        "restraint_enabled": true,
+        "direction_enabled": false,
+        "ct_enabled": false
       }
     },
     {
@@ -437,7 +445,9 @@
       "parameters": {
         "report_interval_us": 100000,
         "out_port": "out",
-        "output_business_type": "sampling"
+        "output_business_type": "sampling",
+        "timing_role": "mu",
+        "polarity": 1
       }
     },
     {
@@ -453,7 +463,9 @@
       "parameters": {
         "report_interval_us": 100000,
         "out_port": "out",
-        "output_business_type": "sampling"
+        "output_business_type": "sampling",
+        "timing_role": "mu",
+        "polarity": -1
       }
     },
     {
@@ -468,10 +480,12 @@
       "parameters": {
         "target_asset_id": "time_svc_2",
         "effect_type": "timing_offset",
-        "offset_us": 100000,
+        "offset_us": -2000,
         "attack_type": "timing",
         "frequency_mhz": 1575.42,
-        "power_dbm": 30.0
+        "power_dbm": 30.0,
+        "timing_role": "attack",
+        "delay_us": 2000
       },
       "initial_state": {
         "emitting": false
@@ -504,8 +518,9 @@
       },
       "parameters": {
         "sync_port": "sync",
-        "sync_interval_us": 1000000,
-        "time_source": "gnss"
+        "sync_interval_us": 100000,
+        "time_source": "gnss",
+        "timing_role": "clock"
       }
     },
     {
@@ -520,8 +535,9 @@
       },
       "parameters": {
         "sync_port": "sync",
-        "sync_interval_us": 1000000,
-        "time_source": "gnss"
+        "sync_interval_us": 100000,
+        "time_source": "gnss",
+        "timing_role": "clock"
       }
     },
     {
@@ -1084,6 +1100,13 @@
     }
   ],
   "layout": {
+    "timing_lab": {
+      "frequency_hz": 50,
+      "sample_rate_hz": 4000,
+      "sample_period_us": 250,
+      "window_samples": 80,
+      "description": "单相演示：CT 有效值块内保持，MU 合成正弦采样；秒序号+smpCnt 对齐，真实时刻仅作证据。"
+    },
   "layers": [
     {
       "key": "external",

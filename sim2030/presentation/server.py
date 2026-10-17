@@ -93,6 +93,8 @@ class PresentationServer:
         query = parse_qs(target.query, keep_blank_values=True)
 
         try:
+            if route == "/timing-view.js":
+                return self._static("timing-view.js")
             if route == "/" or route == "/index.html":
                 return self._static("index.html")
             if route in ("/app.js", "/static/app.js"):
@@ -256,6 +258,8 @@ class PresentationServer:
         result = self.application.set_device_parameter(device_id, key, body["value"])
         if result.get("status") == "not_found":
             return 404, {"error": result.get("reason", "目标不存在")}, _JSON_HEADERS
+        if result.get("status") == "rejected":
+            return 400, {"error": result.get("reason", "参数被拒绝"), **result}, _JSON_HEADERS
         return 200, result, _JSON_HEADERS
 
     def _views(self, run_id: str, query: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
