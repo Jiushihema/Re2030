@@ -2135,6 +2135,7 @@ function animateParticles(now) {
   if (isRunning) animClock += delta * simulationPlayer.rate;
   const clock = animClock;
   animateCyberDemo();
+  TimingView.animate(delta, isRunning, simulationPlayer.rate);
 
   const packetLayer = $("#topo-packets");
   if (packetLayer) {
@@ -2477,6 +2478,7 @@ function renderMcMonitor(overview) {
 function inspectDevice(deviceId, fillTarget = false) {
   if (document.body.classList.contains("topology-expanded")) setTopologyExpanded(false);
   state.selectedDeviceId = deviceId;
+  if (deviceId === 'diff_prot' && state.systemData?.topology?.layout?.timing_lab) TimingView.open();
   if (fillTarget) {
     loadDeviceControls(deviceId);
   }

@@ -4,19 +4,66 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fixed = (n, digits = 3) => Number.isFinite(n) ? n.toFixed(digits) : '—';
   const time = us => `${fixed(us / 1e6, 6)} s`;
-  let latest, selected, callbacks = {}, runId;
+  let latest, selected, callbacks = {}, runId, lastTime, lastPaint = 0;
 
-  function waveform(rows) {
+  // A moving viewport over received samples, never synthetic future points.
+  class SampleScroller {
+    constructor() { this.rows = []; this.end = null; this.target = null; }
+    update(rows, snap = false) {
+      if (!rows?.length) return;
+      this.rows = rows;
+      this.target = rows.at(-1).local_time_us;
+      if (this.end == null) this.end = Math.min(this.target, rows[0].local_time_us + 60000);
+      this.end = Math.max(this.end, rows[0].local_time_us);
+      if (snap) this.end = this.target;
+    }
+    tick(delta, running, rate, dtUs) {
+      if (running && this.end != null) this.end = Math.min(this.target, this.end + Math.min(delta, 200) * rate * dtUs / 1000);
+    }
+    visible() { return this.rows.filter(r => r.local_time_us >= this.end - 60000 && r.local_time_us <= this.end); }
+  }
+  let scroller = new SampleScroller();
+
+  function paintWave() {
+    if (!latest || document.getElementById('timing-workbench').hidden) return;
+    const trip = document.getElementById('timing-wave-mode').value === 'trip';
+    const rows = trip ? latest.timing_lab?.trip_waveform : scroller.visible();
+    document.getElementById('timing-wave').innerHTML = waveform(rows, !trip && scroller.end != null ? {start:scroller.end - 60000, end:scroller.end} : null);
+  }
+
+  function animate(delta, running, rate) {
+    scroller.tick(delta, running && latest?.status === 'running', rate, latest?.dt_us || 100000);
+    lastPaint += delta;
+    if (running && lastPaint >= 32 && document.getElementById('timing-wave-mode')?.value === 'live') {
+      lastPaint = 0; paintWave();
+    }
+  }
+
+  function open() {
+    if (!latest?.topology?.layout?.timing_lab) return;
+    const panel = document.getElementById('timing-workbench');
+    panel.hidden = false;
+    if (!panel.dataset.placed) {
+      panel.style.width = `${Math.min(820, window.innerWidth - 32)}px`;
+      panel.style.height = `${Math.min(420, window.innerHeight - 60)}px`;
+      panel.style.left = `${Math.max(16, (window.innerWidth - Math.min(820, window.innerWidth - 32)) / 2)}px`;
+      panel.style.top = `${Math.max(16, window.innerHeight - Math.min(420, window.innerHeight - 60) - 24)}px`;
+      panel.dataset.placed = '1';
+    }
+    paintWave();
+  }
+
+  function waveform(rows, bounds = null) {
     if (!rows?.length) return '<p class="timing-empty">推进仿真以获取两路有效采样；跳闸后可切换到“最近跳闸证据”。</p>';
     const amplitude = Math.max(1, ...rows.flatMap(r => [Math.abs(r.i1), Math.abs(r.i2), Math.abs(r.id)]));
-    const start = rows[0].local_time_us, span = Math.max(250, rows.at(-1).local_time_us - start);
+    const start = bounds?.start ?? rows[0].local_time_us, span = Math.max(250, (bounds?.end ?? rows.at(-1).local_time_us) - start);
     const x = r => 48 + (r.local_time_us - start) / span * 820;
     const y = value => 76 - value / amplitude * 52;
     const paths = [['i1','#67e8f9'],['i2','#c4b5fd'],['id','#fb7185']].map(([field,color]) =>
       `<path data-trace="${field}" d="${rows.map((r,i) => `${i?'L':'M'}${fixed(x(r),1)},${fixed(y(r[field]),1)}`).join(' ')}" fill="none" stroke="${color}" stroke-width="1.8"/>`).join('');
     const ticks = [0,.25,.5,.75,1].map(p => `<text x="${48+820*p}" y="147" text-anchor="middle">${fixed((start+span*p)/1000,2)}</text>`).join('');
     return `<div class="timing-wave-legend"><span style="color:#67e8f9">━ MU1 进线 i₁</span><span style="color:#c4b5fd">━ MU2 出线 i₂</span><span style="color:#fb7185">━ 瞬时差流 i₁+i₂</span></div>
-      <svg class="timing-wave-svg" viewBox="0 0 920 166" role="img" aria-label="两路原始方向电流与瞬时差流，按本地采样编号对齐">
+      <svg class="timing-wave-svg" viewBox="0 0 920 166" preserveAspectRatio="none" role="img" aria-label="两路原始方向电流与瞬时差流，按本地采样编号对齐">
         <path d="M48 22H868 M48 76H868 M48 130H868" stroke="#26374e" fill="none"/>
         <text x="3" y="25">${fixed(amplitude,0)}</text><text x="20" y="80">0</text><text x="0" y="132">−${fixed(amplitude,0)}</text>
         <text x="4" y="12">A</text>${paths}${ticks}<text x="890" y="147">ms</text>
@@ -35,9 +82,16 @@
     const lab = data.timing_lab, enabled = !!data.topology?.layout?.timing_lab;
     const $ = id => document.getElementById(id);
     document.body.classList.toggle('timing-mode', enabled);
-    ['timing-workbench','timing-result','timing-device-info'].forEach(id => { $(id).hidden = !enabled; });
-    if (!enabled) return;
-    if (runId !== data.run_id) { runId = data.run_id; $('timing-wave-mode').value = 'live'; }
+    ['timing-result','timing-device-info'].forEach(id => { $(id).hidden = !enabled; });
+    if (!enabled) { $('timing-workbench').hidden = true; return; }
+    if (runId !== data.run_id) {
+      runId = data.run_id; lastTime = null;
+      scroller = new SampleScroller();
+      $('timing-wave-mode').value = 'live';
+      $('timing-workbench').hidden = true;
+    }
+    scroller.update(lab?.waveform, data.status !== 'running' && data.time_us !== lastTime);
+    lastTime = data.time_us;
     const mgmt = data.management || {}, report = lab?.report || {}, lastTrip = lab?.last_trip;
     const attack = mgmt.time_attack_node?.state?.emitting;
     const breaker = mgmt.brk?.state || {};
@@ -60,8 +114,8 @@
       <h3>授时与动作事件</h3><div class="timing-event-list">${(lab?.events || []).slice(-12).reverse().map(e => `<div><time>${time(e.time_us)}</time><span>${esc(e.text)}</span></div>`).join('') || '<p>尚无事件，点击开始或单步推进。</p>'}</div>`;
 
     const mode = $('timing-wave-mode').value;
-    const rows = mode === 'baseline' ? lab?.baseline : mode === 'trip' ? lab?.trip_waveform : lab?.waveform;
-    $('timing-wave').innerHTML = waveform(rows);
+    const rows = mode === 'trip' ? lab?.trip_waveform : scroller.visible();
+    paintWave();
     const pairs = (rows || []).slice(-6);
     $('timing-pair-table').innerHTML = pairs.length ? `<p class="timing-caption">同一编号配对，但真实采样时刻可能不同。真实时刻属于模型证据。</p><table><thead><tr><th>本地秒 / smpCnt</th><th>MU1 真实时刻</th><th>MU2 真实时刻</th><th>错位</th><th>i₁ / i₂ (A)</th></tr></thead><tbody>${pairs.map(r => `<tr class="${r.skew_us ? 'mismatch':''}"><td>${r.epoch} / ${r.smpCnt}</td><td>${time(r.true_1_us)}</td><td>${time(r.true_2_us)}</td><td>${fixed(r.skew_us/1000)} ms</td><td>${fixed(r.i1,2)} / ${fixed(r.i2,2)}</td></tr>`).join('')}</tbody></table>` : '<p>等待有效配对采样。</p>';
     const selectedState = mgmt[deviceId]?.state || {};
@@ -83,16 +137,51 @@
 
   function bind(options) {
     callbacks = options;
+    const panel = document.getElementById('timing-workbench');
+    const handle = document.getElementById('timing-window-handle');
+    document.getElementById('timing-window-close').addEventListener('click', () => { panel.hidden = true; });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') panel.hidden = true; });
+    const fit = () => {
+      const box = panel.getBoundingClientRect();
+      panel.style.width = `${Math.min(box.width, window.innerWidth - 16)}px`;
+      panel.style.height = `${Math.min(box.height, window.innerHeight - 16)}px`;
+      panel.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - Math.min(box.width, window.innerWidth - 16) - 8))}px`;
+      panel.style.top = `${Math.max(8, Math.min(box.top, window.innerHeight - Math.min(box.height, window.innerHeight - 16) - 8))}px`;
+    };
+    ['smaller','larger'].forEach(action => document.getElementById(`timing-window-${action}`).addEventListener('click', () => {
+      const box = panel.getBoundingClientRect(), factor = action === 'larger' ? 1.2 : 1 / 1.2;
+      panel.style.width = `${Math.max(360, box.width * factor)}px`;
+      panel.style.height = `${Math.max(260, box.height * factor)}px`;
+      fit();
+    }));
+    let drag;
+    handle.addEventListener('pointerdown', event => {
+      if (event.target.closest('button') || event.button !== 0) return;
+      const box = panel.getBoundingClientRect();
+      drag = {x:event.clientX, y:event.clientY, left:box.left, top:box.top};
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener('pointermove', event => {
+      if (!drag) return;
+      const box = panel.getBoundingClientRect();
+      panel.style.left = `${Math.max(0, Math.min(window.innerWidth - box.width, drag.left + event.clientX - drag.x))}px`;
+      panel.style.top = `${Math.max(0, Math.min(window.innerHeight - box.height, drag.top + event.clientY - drag.y))}px`;
+    });
+    const endDrag = () => { drag = null; };
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+    window.addEventListener('resize', () => { if (!panel.hidden) fit(); });
     document.getElementById('timing-wave-mode').addEventListener('change', () => render(latest, selected));
     document.getElementById('timing-result').addEventListener('click', event => {
       const device = event.target.closest('[data-timing-device]');
       if (device) callbacks.inspect(device.dataset.timingDevice);
       if (event.target.closest('[data-timing-trip]')) {
         document.getElementById('timing-wave-mode').value = 'trip';
+        open();
         render(latest, selected);
       }
     });
   }
-  root.TimingView = {render, bind, waveform, gateRows};
+  root.TimingView = {render, bind, waveform, gateRows, open, animate, SampleScroller};
   if (typeof module !== 'undefined') module.exports = root.TimingView;
 })(typeof window !== 'undefined' ? window : globalThis);

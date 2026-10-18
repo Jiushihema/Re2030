@@ -103,6 +103,28 @@ class TestTimingDifferential(unittest.TestCase):
         self.assertEqual(self.protection.trip_count, 1)
         self.assertAlmostEqual(self.protection.report["id_a"], 0, places=9)
 
+    def test_new_run_never_inherits_unfinished_manual_attack(self):
+        self.attack()
+        self.assertTrue(self.app.engine.get_device("time_attack_node").emitting)
+        for _ in range(2):
+            self.app.load(SCENE)
+            self.assertFalse(self.app.engine.get_device("time_attack_node").emitting)
+            self.app.start()
+            self.advance(25)
+            self.assertEqual(self.app.engine.get_device("time_svc_2").state["timing_offset_us"], 0)
+            self.assertEqual(self.app.engine.get_device("mu_2").state["clock_offset_us"], 0)
+            self.assertEqual(self.app.engine.get_device("diff_prot").trip_count, 0)
+            self.assertEqual(self.app.engine.get_device("brk").state["position"], "closed")
+
+    def test_pause_resume_does_not_start_an_attack(self):
+        for _ in range(3):
+            self.app.pause()
+            self.app.start()
+            self.advance(10)
+        self.assertFalse(self.app.engine.get_device("time_attack_node").emitting)
+        self.assertEqual(self.protection.trip_count, 0)
+        self.assertEqual(self.app.engine.get_device("mu_2").state["clock_offset_us"], 0)
+
     def test_restraint_gate_blocks_until_disabled(self):
         self.set_param("slope", .8)
         self.attack()

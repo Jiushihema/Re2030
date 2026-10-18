@@ -244,11 +244,7 @@
           <g id="topo-network-assets"></g>
         </svg>
         </div>
-        <section id="timing-workbench" class="timing-workbench" aria-label="差动保护采样对照" hidden>
-          <div class="timing-wave-header"><strong>A 相电流 · 同编号对齐</strong><select id="timing-wave-mode" aria-label="波形记录"><option value="live">当前采样</option><option value="baseline">正常对照</option><option value="trip">最近跳闸证据</option></select></div>
-          <div id="timing-wave"></div>
-          <details id="timing-pairs"><summary>同一 smpCnt，是否真是同一时刻？</summary><div id="timing-pair-table"></div></details>
-        </section>
+
       </div>
 
       <!-- 推演控制悬浮层：半透明可拖拽，展开拓扑时仍可使用 -->
@@ -309,6 +305,18 @@
     </aside>
   </main>
 
+  <section id="timing-workbench" class="timing-workbench" role="dialog" aria-modal="false" aria-labelledby="timing-window-title" hidden>
+    <header id="timing-window-handle" class="timing-window-handle">
+      <strong id="timing-window-title">差动保护 · A 相电流 · 同编号对齐</strong>
+      <div class="timing-window-actions"><button type="button" id="timing-window-smaller" aria-label="缩小波形窗口">−</button><button type="button" id="timing-window-larger" aria-label="放大波形窗口">＋</button><button type="button" id="timing-window-close" aria-label="关闭波形窗口">×</button></div>
+    </header>
+    <div class="timing-window-body">
+      <div class="timing-wave-header"><span>拖动标题栏移动 · 拖动右下角调整大小</span><select id="timing-wave-mode" aria-label="波形记录"><option value="live">当前采样</option><option value="trip">最近跳闸证据</option></select></div>
+      <div id="timing-wave"></div>
+      <details id="timing-pairs"><summary>同一 smpCnt，是否真是同一时刻？</summary><div id="timing-pair-table"></div></details>
+    </div>
+  </section>
+
   <!-- 内部报文详情：仅展示 Message.to_record() 的真实字段 -->
   <div id="packet-inspector" class="packet-inspector" aria-hidden="true">
     <div class="packet-inspector-backdrop" data-packet-close="1"></div>
@@ -333,7 +341,7 @@
   <script src="/network-topology.js?v=20261018-time-report"></script>
   <script src="/measurement-sources.js?v=20261018-merged"></script>
   <script src="/simulation-player.js?v=20261012-playback3"></script>
-  <script src="/timing-view.js?v=20261018"></script>
+  <script src="/timing-view.js?v=20261018-floating2"></script>
   <script src="/app.js?v=20261018-fan-sensors"></script>
 </body>
 </html>

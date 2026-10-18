@@ -54,6 +54,10 @@ class SimulationEngine:
         entry_id: str = "",
     ) -> None:
         self.message_handler = None
+        # A new run must not inherit pending effects or physical wiring.
+        self._active_effects = []
+        self._applied_effects = set()
+        self._physical_coupling = {}
         self._device_specs = list(device_specs)
         self._link_specs = list(link_specs)
         self._entry_id = entry_id or self._default_entry_id(device_specs)

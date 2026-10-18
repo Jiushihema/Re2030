@@ -111,7 +111,7 @@ class TimingProtection(DifferentialProtectionDevice):
         super().__init__(spec)
         self.pending = {"mu": {}, "mu_2": {}}
         self.window = deque(maxlen=WINDOW)
-        self.wave = deque(maxlen=240)
+        self.wave = deque(maxlen=1200)
         self.baseline = []
         self.trip_wave = []
         self.history = deque(maxlen=100)
