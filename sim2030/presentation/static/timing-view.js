@@ -77,6 +77,16 @@
     }).join('');
   }
 
+  function protectionStatus(breaker = {}, report = {}) {
+    if (breaker.position === 'open' && breaker.tripped) {
+      return {text:'差动保护已出口 · 断路器已跳闸', operated:true};
+    }
+    if (report.valid && report.operate) {
+      return {text:'差动判据满足 · 等待断路器动作', operated:true};
+    }
+    return {text:'差动保护监测中', operated:false};
+  }
+
   function render(data, deviceId) {
     latest = data; selected = deviceId;
     const lab = data.timing_lab, enabled = !!data.topology?.layout?.timing_lab;
@@ -100,12 +110,12 @@
       const s = mgmt[id]?.state || {}, offset = s.clock_offset_us ?? s.timing_offset_us ?? 0;
       return `<button type="button" class="timing-clock ${offset ? 'delayed' : ''}" data-timing-device="${id}"><span>${name}</span><strong>${time(s.local_time_us || 0)}</strong><small>${s.synced === false ? '等待首次对时' : offset ? `落后 ${fixed(Math.abs(offset)/1000)} ms` : '正常 · 偏移 0 ms'}</small></button>`;
     }).join('');
-    const stateText = breaker.tripped ? '差动保护已出口 · 断路器已跳闸' : lab?.trip_count ? '差动保护已出口 · 等待动作／人工操作后状态' : report.operate ? '差动判据满足' : '差动保护监测中';
+    const status = protectionStatus(breaker, report);
     $('timing-result').innerHTML = `<h2>授时链路与差动保护</h2>
       <div class="timing-reference">模型参考时刻 ${time(mgmt.time_svc?.state?.reference_time_us || 0)}<br>攻击节点：${attack ? '<b class="timing-danger">正在干扰</b>' : '未发射'} · 50 Hz / 4 kHz</div>
       <div class="timing-clock-grid">${clockCards}</div>
       <div class="timing-path">授时延迟 → MU 编号错位 → 差流 → 保护出口 → 智能终端 → 断路器</div>
-      <div class="timing-outcome ${lab?.trip_count ? 'operated' : ''}">${stateText}</div>
+      <div class="timing-outcome ${status.operated ? 'operated' : ''}">${status.text}</div>
       <div class="timing-quantities"><span>Iᵈ 差动量<strong>${fixed(report.id_a,2)} A</strong></span><span>Iʳ 制动量<strong>${fixed(report.ir_a,2)} A</strong></span></div>
       <div class="timing-gates">${gateRows(lab?.gates)}</div>
       <p class="timing-caption">判据：Iᵈ = |I₁ + I₂|；Iʳ = |I₁| + |I₂|。启用的实际门槛须同时满足。预留开关不参与计算。</p>
@@ -182,6 +192,6 @@
       }
     });
   }
-  root.TimingView = {render, bind, waveform, gateRows, open, animate, SampleScroller};
+  root.TimingView = {render, bind, waveform, gateRows, protectionStatus, open, animate, SampleScroller};
   if (typeof module !== 'undefined') module.exports = root.TimingView;
 })(typeof window !== 'undefined' ? window : globalThis);

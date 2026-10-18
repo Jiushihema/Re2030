@@ -2,6 +2,27 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {waveform, gateRows} = require('../sim2030/presentation/static/timing-view.js');
 const {SampleScroller} = require('../sim2030/presentation/static/timing-view.js');
+const {protectionStatus} = require('../sim2030/presentation/static/timing-view.js');
+
+test('reclosed breaker and cleared differential restore monitoring status and color', () => {
+  // A completed trip may still exist in history; current state is healthy again.
+  const state = {position:'closed', tripped:false};
+  const status = protectionStatus(state, {valid:true, operate:false, id_a:0});
+  assert.equal(status.text, '差动保护监测中');
+  assert.equal(status.operated, false);
+  // Even an inconsistent old trip marker cannot override a closed position.
+  assert.equal(protectionStatus({...state, tripped:true}, {valid:true, operate:false}).text, status.text);
+});
+
+test('pending differential operation and completed trip remain distinguishable', () => {
+  const pending = protectionStatus({position:'closed'}, {valid:true, operate:true});
+  assert.match(pending.text, /等待断路器动作/);
+  assert.equal(pending.operated,true);
+  const tripped = protectionStatus({position:'open', tripped:true}, {valid:true, operate:false});
+  assert.match(tripped.text, /断路器已跳闸/);
+  assert.equal(tripped.operated,true);
+  assert.equal(protectionStatus({position:'open'}, {valid:true, operate:false}).text, '差动保护监测中');
+});
 
 test('waveform preserves opposite polarity and displays the instantaneous sum', () => {
   const rows = [
