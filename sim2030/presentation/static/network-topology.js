@@ -13,6 +13,42 @@ const NetworkTopology = (() => {
   const PORT_MARGIN = 12;
   const PORT_SPACING = 12;
   const MAX_LANES_PER_SIDE = 3;
+  const PROTOCOL_ORDER = ["mms", "sv", "goose"];
+  const ACCESS_STRAND_OFFSET = 1.8;
+
+  function protocolsForConnection(network, connection, linkMap) {
+    const found = new Set();
+    for (const id of network.link_ids || []) {
+      const link = linkMap.get(id);
+      if (!link) continue;
+      if (endpointId(link.endpoint_a) !== connection.device_id &&
+          endpointId(link.endpoint_b) !== connection.device_id) continue;
+      const protocol = String(link.parameters?.protocol || "").toLowerCase();
+      if (protocol) found.add(protocol);
+    }
+    return [...PROTOCOL_ORDER.filter(protocol => found.has(protocol)),
+      ...found].filter((protocol, index, all) => all.indexOf(protocol) === index);
+  }
+
+  function offsetAccessLine(points, offset) {
+    if (points.length < 3) return points.map(point => ({ x: point.x + offset, y: point.y + offset }));
+    // 接入线固定为“设备锚点 → 竖直走线 → 水平进交换机端口”，按协议并行平移成线束。
+    const [start, bend, end] = points;
+    return [
+      { x: start.x + offset, y: start.y },
+      { x: bend.x + offset, y: bend.y + offset },
+      { x: end.x, y: end.y + offset },
+    ];
+  }
+
+  function strandsFor(points, protocols) {
+    if (protocols.length < 2) return null;
+    const step = ACCESS_STRAND_OFFSET * 2;
+    return protocols.map((protocol, index) => ({
+      protocol,
+      points: offsetAccessLine(points, -ACCESS_STRAND_OFFSET * (protocols.length - 1) + step * index),
+    }));
+  }
 
   function pointAt(points, progress) {
     if (!points.length) return { x: 0, y: 0 };
@@ -95,10 +131,19 @@ const NetworkTopology = (() => {
 
       placements.forEach(({ connection, anchor, port }) => {
         const points = [anchor, { x: anchor.x, y: port.y }, port];
+        const protocols = protocolsForConnection(network, connection, linkMap);
+        const strands = strandsFor(points, protocols);
         access.set(connection.device_id, points);
-        interfaces.push({ ...connection, network_id: network.id, anchor, port });
-        cables.push({ id: `${network.id}:${connection.switch_port}`, kind: network.id, points,
-          title: `${connection.device_id} / ${connection.interface_id} ↔ ${sw.name} / ${connection.switch_port}` });
+        interfaces.push({ ...connection, network_id: network.id, anchor, port, protocols });
+        cables.push({
+          id: `${network.id}:${connection.switch_port}`,
+          kind: network.id,
+          points,
+          protocols,
+          ...(strands ? { strands } : {}),
+          title: `${connection.device_id} / ${connection.interface_id} ↔ ${sw.name} / ${connection.switch_port}`
+            + (protocols.length ? ` · ${protocols.map(protocol => protocol.toUpperCase()).join("+")}` : ""),
+        });
       });
       for (const id of network.link_ids) {
         const link = linkMap.get(id);
@@ -136,20 +181,27 @@ const NetworkTopology = (() => {
       });
       // 检测节点（如频谱/授时信号检测）的检测结论同样上报安全监测平台：
       // 与 IDS 管理口一样画成监测上报线。检测节点与平台同处上方监测区时，从节点顶边先
-      // 上行再右接平台左侧边；否则从节点右侧边出发，先横移再竖直到平台的有效高度内。
+      // 上行再右接平台左侧边；位于过程层等下层区域时，先从节点顶边走到过程层上方的
+      // 层间空档，再右移到设备区之外，最后上行进入平台，避免横穿其它设备。
       const clampToManager = (value) => Math.min(Math.max(value, manager.y + 12), manager.y + manager.height - 12);
+      const processBand = (topology.layout?.layers || []).find(layer => layer.key === "process");
+      const lowerCorridorY = processBand ? processBand.y - 30 : manager.y + manager.height + 40;
       for (const device of topology.devices || []) {
         if (device.device_type !== "spectrum_detector") continue;
         const coord = coordinates[device.device_id];
         if (!coord) continue;
         const inUpperRegion = coord.y <= manager.y + manager.height;
-        const start = inUpperRegion
-          ? { x: coord.x + NODE_WIDTH / 2, y: coord.y }
-          : { x: coord.x + NODE_WIDTH, y: coord.y + NODE_HEIGHT / 2 };
+        const start = { x: coord.x + NODE_WIDTH / 2, y: coord.y };
         const end = { x: manager.x, y: clampToManager(start.y) };
-        const points = inUpperRegion
-          ? [start, { x: start.x, y: end.y }, end]
-          : [start, { x: end.x - 35, y: start.y }, { x: end.x - 35, y: end.y }, end];
+        // 场景可用 layout.report_points 指定“从 IDS 连线右侧绕到平台”的走线；
+        // 未声明时沿用通用路径，保证旧场景不受影响。
+        const explicit = Array.isArray(device.layout?.report_points) ? device.layout.report_points : null;
+        const points = explicit?.length
+          ? explicit
+          : (inUpperRegion
+            ? [start, { x: start.x, y: end.y }, end]
+            : [start, { x: start.x, y: lowerCorridorY },
+              { x: end.x - 35, y: lowerCorridorY }, { x: end.x - 35, y: end.y }, end]);
         cables.push({ id: `${device.device_id}:report`, kind: "management", points,
           title: `${device.name || device.device_id} → ${manager.name}（检测结论上报）` });
       }

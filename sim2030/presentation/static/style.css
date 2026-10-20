@@ -8,12 +8,20 @@
 /* 站控网、过程网与旁路 IDS；不同端口的线交叉时不表示连接。 */
 .topo-link.station { stroke: #38bdf8; stroke-width: 1.8; }
 .topo-link.process { stroke: #2dd4bf; stroke-width: 1.8; }
+/* 协议线束：混合接入线会拆成多条并行线，单协议接入线直接使用协议色。 */
+.topo-link.protocol-mms { stroke: #38bdf8; stroke-width: 1.8; }
+.topo-link.protocol-sv { stroke: #2dd4bf; stroke-width: 1.8; }
+.topo-link.protocol-goose { stroke: #facc15; stroke-width: 1.8; }
+.topo-link.strand { stroke-width: 1.5; }
 .topo-link.mirror { stroke: #a78bfa; stroke-width: 2; stroke-dasharray: 6 4; }
 .topo-link.management { stroke: #a78bfa; stroke-width: 1.5; stroke-dasharray: 2 5; opacity: .65; }
 .topo-link.measurement { stroke: #94a3b8; stroke-width: 1.6; }
 .topo-link.timing { stroke: #fbbf24; stroke-width: 1.5; stroke-dasharray: 9 4 2 4; }
 .legend-line.line-station { border-top: 2px solid #38bdf8; }
 .legend-line.line-process { border-top: 2px solid #2dd4bf; }
+.legend-line.protocol-mms { border-top: 2px solid #38bdf8; }
+.legend-line.protocol-sv { border-top: 2px solid #2dd4bf; }
+.legend-line.protocol-goose { border-top: 2px solid #facc15; }
 .legend-line.line-mirror { border-top: 2px dashed #a78bfa; }
 .legend-line.line-management { border-top: 2px dotted #a78bfa; }
 .legend-line.line-measurement { border-top: 2px solid #94a3b8; }
@@ -979,6 +987,7 @@ body {
   display: inline-block;
   vertical-align: middle;
 }
+.legend-item .legend-line + .legend-line { margin-left: 2px; }
 
 .line-wired { background: #0ea5e9; box-shadow: 0 0 4px #0ea5e9; }
 .line-wireless {

@@ -31,6 +31,43 @@ test('two isolated switches, two mirror feeds and independent reporting cables',
   }
 });
 
+test('live scenario access lines expose MMS/SV/GOOSE protocol sets', () => {
+  const access = new Map(model.cables
+    .filter(cable => cable.kind === 'station' || cable.kind === 'process')
+    .map(cable => [cable.id, cable]));
+  const expected = {
+    'station:P1': ['mms'],
+    'station:P2': ['mms'],
+    'station:P3': ['mms'],
+    'station:P4': ['mms'],
+    'process:P1': ['sv', 'goose'],
+    'process:P2': ['sv', 'goose'],
+    'process:P3': ['sv', 'goose'],
+    'process:P4': ['goose'],
+    'process:P5': ['goose'],
+    'process:P6': ['sv'],
+    'process:P7': ['sv'],
+    'process:P8': ['goose'],
+    'process:P9': [],
+  };
+  assert.equal(access.size, Object.keys(expected).length);
+  for (const [id, protocols] of Object.entries(expected)) {
+    const cable = access.get(id);
+    assert.ok(cable, `${id} 应存在`);
+    assert.deepEqual(cable.protocols, protocols, `${id} 协议集合`);
+    if (protocols.length > 1) {
+      assert.equal(cable.strands.length, protocols.length, `${id} 应为双色线束`);
+      for (const strand of cable.strands) {
+        assert.ok(strand.points.some((point, index) =>
+          point.x !== cable.points[index].x || point.y !== cable.points[index].y),
+        `${id} 的 ${strand.protocol} 线束应有偏移`);
+      }
+    } else {
+      assert.equal(cable.strands, undefined, `${id} 单协议不应拆线束`);
+    }
+  }
+});
+
 test('两套合并单元的量测都经过程网送达保护装置与测控装置', () => {
   for (const mu of ['mu', 'mu_2']) {
     for (const [receiver, targetPort] of [['mc', 'mu'], ['prot', 'in'], ['diff_prot', 'in']]) {
@@ -249,7 +286,8 @@ test('接入走线不穿过其它设备的竖线', () => {
 
 test('检测节点把检测结论上报安全监测平台', () => {
   for (const [filename, detectorId] of [['substation-time-attack.json', 'time_detect_node'],
-    ['substation-em-attack.json', 'spectrum_detect_node']]) {
+    ['substation-em-attack.json', 'spectrum_detect_node'],
+    ['substation-sensor-attack.json', 'spectrum_detect_node']]) {
     const scene = JSON.parse(fs.readFileSync(path.join(__dirname, '../scenarios', filename), 'utf8'));
     const coords = Object.fromEntries(scene.devices.map(d => [d.device_id, d.layout]));
     const model = topology.build(scene, coords);
@@ -266,7 +304,8 @@ test('检测节点把检测结论上报安全监测平台', () => {
       `${filename}: 上报线应从检测节点顶边中点或右侧边中点出发，实际 ${JSON.stringify(start)}`);
 
     const manager = scene.layout.deployment.manager;
-    assert.equal(cable.points.at(-1).x, manager.x, `${filename}: 上报线应接到安全监测平台左侧边`);
+    assert.ok([manager.x, manager.x + manager.width].includes(cable.points.at(-1).x),
+      `${filename}: 上报线应接到安全监测平台左侧边或右侧边`);
     assert.ok(cable.points.at(-1).y >= manager.y && cable.points.at(-1).y <= manager.y + manager.height,
       `${filename}: 上报线应落在平台轮廓内`);
     // 上报线不得穿过攻击节点或检测节点自身的方框。
@@ -308,7 +347,7 @@ test('the network attack node is a red device cabled to its access switch', () =
     { x: coords[origin.asset_id].x + 45, y: sw.y + sw.height }]);
   assert.ok(cable.points[1].y < cable.points[0].y, 'attack cable must lead down from the switch');
   // 攻击接入不能挤掉既有的接入线与业务路由。
-  assert.equal(model.cables.filter(c => c.kind === 'process').length, 6);
+  assert.equal(model.cables.filter(c => c.kind === 'process').length, 9);
   assert.equal(model.routes.size, lab.links.length);
 });
 
@@ -318,6 +357,12 @@ test('all scenario layouts keep devices in their layers and IDS mirror ports ali
     const bands = new Map(config.layout.layers.map(b => [b.key, b]));
     for (const device of config.devices) {
       const band = bands.get(device.layer), p = device.layout;
+      if (filename === 'substation-sensor-attack.json' && device.device_id === 'spectrum_detect_node') {
+        // 传感器攻击的检测节点按需求放在攻击节点右侧，允许超过程序层右边界。
+        assert.ok(p.x > band.x + band.width, `${filename}: detection node should sit outside the process band`);
+        assert.ok(p.y >= band.y + 28 && p.y + 48 <= band.y + band.height, `${filename}: detection node vertical containment`);
+        continue;
+      }
       assert.ok(p.x >= band.x && p.x + 90 <= band.x + band.width, `${filename}: ${device.device_id} horizontal containment`);
       assert.ok(p.y >= band.y + 28 && p.y + 48 <= band.y + band.height, `${filename}: ${device.device_id} must clear the layer title`);
     }
@@ -338,22 +383,25 @@ test('all scenario layouts keep devices in their layers and IDS mirror ports ali
     if (filename === 'substation-sensor-attack.json') {
       const fanSensorIds = ['fan_vibration', 'fan_current', 'fan_speed'];
       const fanSensors = fanSensorIds.map(id => config.devices.find(d => d.device_id === id));
-      assert.ok(fanSensors.every(d => d.layout.x === 465), 'fan sensors must form one vertical column');
-      assert.deepEqual(fanSensors.map(d => d.layout.y), [678, 738, 798]);
-      assert.equal(config.devices.find(d => d.device_id === 'fan_condition_monitor').layout.x, 465,
-        'fan monitor must sit above its sensor column');
-      const originalSensors = ['oil_temp', 'ct_current', 'vt_voltage']
-        .map(id => config.devices.find(d => d.device_id === id));
-      assert.deepEqual(originalSensors.map(d => d.layout.x), [570, 665, 760]);
-      assert.equal(config.devices.find(d => d.device_id === 'mu').layout.x, 665,
-        'merging unit must align with electrical sensors');
+      assert.ok(fanSensors.every(d => d.layout.x === 1005), 'fan sensors must form one vertical column');
+      assert.deepEqual(fanSensors.map(d => d.layout.y), [588, 658, 728]);
+      const monitor = config.devices.find(d => d.device_id === 'fan_condition_monitor');
+      assert.deepEqual([monitor.layout.x, monitor.layout.y], [1140, 658],
+        'fan monitor must sit beside the middle fan sensor');
+      assert.equal(config.devices.find(d => d.device_id === 'mu').layout.x,
+        config.devices.find(d => d.device_id === 'time_svc').layout.x,
+        'merging unit must align with its timing source');
       const attack = config.devices.find(d => d.device_id === 'sensor_attack_node');
-      assert.ok(attack.layout.y > fanSensors.at(-1).layout.y, 'attack source must sit below and clear the sensor group');
-      assert.equal(attack.layout.x, config.devices.find(d => d.device_id === 'cool').layout.x,
-        'attack source must sit below the cooling fan, not the fan sensor column');
-      assert.deepEqual(config.layout.deployment.direct_links['L-sensor-cool'].points,
-        [{ x: attack.layout.x + 45, y: attack.layout.y }, { x: attack.layout.x + 45, y: 776 }],
-        'attack interference path must connect the attack node directly to the cooling fan');
+      assert.equal(attack.parameters.target_asset_id, 'fan_vibration',
+        'sensor attack must target the vibration sensor');
+      assert.deepEqual([attack.layout.x, attack.layout.y], [1140, 588],
+        'attack source must sit right of the vibration sensor');
+      const detector = config.devices.find(d => d.device_id === 'spectrum_detect_node');
+      assert.deepEqual([detector.layout.x, detector.layout.y, detector.layer], [1260, 588, 'process'],
+        'sensor detection node must sit right of the attack node, outside the process band');
+      assert.deepEqual(config.layout.deployment.direct_links['L-sensor-fan_vibration'].points,
+        [{ x: 1140, y: 612 }, { x: 1095, y: 612 }],
+        'attack interference path must connect the attack node to the vibration sensor');
     }
   }
 });

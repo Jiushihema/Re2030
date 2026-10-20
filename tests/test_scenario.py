@@ -88,6 +88,57 @@ class TestLoadScenario(unittest.TestCase):
             self.assertIsInstance(device.layout.get("x"), (int, float))
             self.assertIsInstance(device.layout.get("y"), (int, float))
 
+    def test_live_network_links_declare_protocols(self):
+        """正常运营场景的站控网/过程网链路带 MMS、SV 或 GOOSE 协议标记。"""
+        config = load_scenario(LIVE_SCENARIO_PATH)
+        expected = {
+            "L-station-mc": "mms",
+            "L-prot-station": "mms",
+            "L-diff_prot-station": "mms",
+            "L-mu-mc": "sv",
+            "L-mu_2-mc": "sv",
+            "L-mu-prot": "sv",
+            "L-mu_2-prot": "sv",
+            "L-mu-diff_prot": "sv",
+            "L-mu_2-diff_prot": "sv",
+            "L-mc-brk": "goose",
+            "L-prot-brk": "goose",
+            "L-diff_prot-brk": "goose",
+            "L-mc-tap": "goose",
+            "L-mc-cool": "goose",
+        }
+        actual = {
+            link.link_id: link.parameters.get("protocol")
+            for link in config.links
+            if link.parameters.get("protocol")
+        }
+        self.assertEqual(actual, expected)
+
+    def test_synced_scenarios_keep_live_protocols_and_diff_position(self):
+        """攻击/网络实验场景应与 live 保持同一套协议标记和差动保护位置。"""
+        live = load_scenario(LIVE_SCENARIO_PATH)
+        expected = {
+            link.link_id: link.parameters.get("protocol")
+            for link in live.links
+            if link.parameters.get("protocol")
+        }
+        scenario_dir = os.path.dirname(LIVE_SCENARIO_PATH)
+        for name in (
+            "substation-em-attack",
+            "substation-goose-lab",
+            "substation-sensor-attack",
+            "substation-time-attack",
+        ):
+            config = load_scenario(os.path.join(scenario_dir, name + ".json"))
+            actual = {
+                link.link_id: link.parameters.get("protocol")
+                for link in config.links
+                if link.parameters.get("protocol")
+            }
+            self.assertEqual(actual, expected, name)
+            diff_prot = next(device for device in config.devices if device.device_id == "diff_prot")
+            self.assertEqual(diff_prot.layout, {"x": 600, "y": 356}, name)
+
     def test_live_scenario_second_timing_chain(self):
         """复数授时系统与合并单元：第二条链路与首条并列成列，授时卫星居中接入两者。"""
         config = load_scenario(LIVE_SCENARIO_PATH)

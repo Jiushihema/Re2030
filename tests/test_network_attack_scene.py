@@ -58,15 +58,24 @@ class TestNetworkAttackPresentation(unittest.TestCase):
         for key in ("attacks", "recognition", "defense"):
             self.assertNotIn(key, demonstration, f"展示场景不得启用 {key}")
 
-    def test_scene_validates_and_is_listed(self):
+    def test_scene_validates_and_is_hidden_from_scenario_list(self):
+        """展示场景按既有策略不进场景列表，但仍可按 ID 创建运行。"""
         self.assertEqual(validate_scenario(load_scenario(str(SCENE))), [])
         with tempfile.TemporaryDirectory() as tmp:
             server = PresentationServer(str(ROOT / "scenarios"), tmp)
             try:
                 code, body, _ = server.handle_request("GET", "/api/scenarios")
                 self.assertEqual(code, 200)
-                item = next(s for s in body["scenarios"] if s["scenario_id"] == "substation-network-attack")
-                self.assertEqual(item["attack_count"], 0)
+                self.assertNotIn(
+                    "substation-network-attack",
+                    {item["scenario_id"] for item in body["scenarios"]},
+                )
+                code, created, _ = server.handle_request(
+                    "POST", "/api/runs",
+                    json.dumps({"scenario_id": "substation-network-attack"}).encode("utf-8"),
+                )
+                self.assertEqual(code, 201)
+                self.assertEqual(created["scenario_id"], "substation-network-attack")
             finally:
                 server.close()
 

@@ -21,10 +21,8 @@
 `scenario.py`（场景校验与设备工厂）、`contracts.py`（数据契约）、`constants.py`（常量）。
 
 约束：后端仅用 Python 标准库，无第三方依赖；测试使用 `unittest`。当前 `python -m unittest discover -s tests -t .`
-共 **103 项**，其中 **102 项通过**；唯一的失败是既有问题（与本次改动无关）：
-`tests/test_network_attack_scene.py::test_scene_validates_and_is_listed` 假设 `substation-network-attack` 会出现在
-`GET /api/scenarios`，但 `presentation/server.py` 早已把它列为隐藏场景，故该断言必然取不到值。排除该文件后
-`Ran 100 tests ... OK`。
+共 **150 项**，全部通过。`substation-network-attack` 按既有策略不出现在 `GET /api/scenarios` 列表，
+`tests/test_network_attack_scene.py` 已改为验证“列表隐藏但可按 ID 创建运行”。
 
 ## 2. 目录结构
 
@@ -278,7 +276,7 @@ body 示例：
 把"攻击"当成交换机自身被控，也与"攻击者接入过程网"的实际场景不符。
 
 改动：新增设备类型 `network_attack_source`（`sim2030/base/security.py` 的 `NetworkAttackNode`），在
-`scenarios/substation-goose-lab.json` 里以 `net_attack_node`（红色节点，`layer: process`，坐标 890/580）接入 `sw-process`，
+`scenarios/substation-goose-lab.json` 里以 `net_attack_node`（红色节点，`layer: process`，坐标 1295/580）接入 `sw-process`，
 由 `layout.goose_lab.attack_origin` 声明：
 
 ```json
@@ -310,21 +308,17 @@ body 示例：
 
 ## 8. 验证与已知风险
 
-- 验证命令：`D:\python\python.exe -m unittest discover -s tests -t .` → `Ran 105 tests`，`errors=1`
-  （既有问题：`test_network_attack_scene.test_scene_validates_and_is_listed`，见第 1 节说明）；
-  排除 `tests/test_network_attack_scene.py` 后全部通过。
-  前端语法：`<bundled node> --check sim2030/presentation/static/{app,simulation-player,network-topology}.js` 均通过；
-  `node --test tests/test_network_topology.cjs` → 11 passed。
+- 验证命令：`python -m unittest discover -s tests -t .` → `Ran 150 tests`，全部通过；
+  `node --test tests/test_network_topology.cjs tests/test_measurement_sources.cjs tests/test_simulation_player.cjs tests/test_cyber_demo.cjs` → 52 passed；
+  前端语法：`node --check sim2030/presentation/static/{app,simulation-player,network-topology}.js` 均通过。
 - 演示页面已经完成态势拓扑大屏；使用 `substation-attack-demo` 自动推演到约 1.5s 后可见：
   识别疑似异常（tap 琥珀色）→ 防御动作 planned/executing/succeeded → 攻击结束后恢复正常。
 - `substation-live.json` 未启用 `recognition/defense`，`attacks=[]`，用于长周期正常业务态势；
   如需演示告警/攻防闭环，使用 `substation-attack-demo.json`。
-- `substation-em-attack.json` 在 `substation-live` 基础上新增“电磁攻击节点”（`em_attack_node`，红框）
-  与“检测节点”（`spectrum_detect_node`，蓝框，标注“频谱检测”，暂无功能），并用红色虚线干扰链路
-  `L-em-ct` 连接攻击节点与电流互感器；攻击进行时该链路上持续流动红色“影响信号”粒子。
-  攻击为**演示平面手动触发**（点选攻击节点 → “开始攻击”/“结束攻击”，
-  对应 `start_attack`/`stop_attack`），不再按时间自动触发；作用为对 `ct_current` 施加
-  `reading_offset=+40A`，电流采样由约 115A 变为约 155A，结束攻击后恢复。
+- `substation-em-attack.json` 已**与基准场景同步**（25 台设备 / 34 条链路，含复数授时/采集链、差动保护、风机状态监测组），在此之上新增“电磁攻击节点”（`em_attack_node`，过程层 `x=465, y=800`，电流互感器正下方）与“检测节点”（`spectrum_detect_node`，过程层 `x=600, y=800`，电压互感器正下方；过程层分层带加高到 320）。干扰链路 `L-em-ct` 从攻击节点顶边垂直接到 `ct_current` 底边；检测节点通过 `layout.report_points` 从右边缘 `x=690` 出发，沿 `y=824` 向右到 `x=1675`，沿两台 IDS 连线右侧上行到 `y=142`，再左接到安全监测平台右下侧。攻击为**演示平面手动触发**（点选攻击节点 → “开始攻击”/“结束攻击”，对应 `start_attack`/`stop_attack`），作用为对 `ct_current` 施加 `reading_offset=+40A`。基准场景有两套互感器和差动保护：只篡改一套 CT 会先产生约 40 A 差流，随后差动保护越限跳闸、断路器分闸；这是预期后果，不是攻击结束后的自动恢复。
+- `substation-sensor-attack.json` 已**与基准场景同步**，新增“传感器攻击节点”（`sensor_attack_node`，过程层 `x=1140, y=588`，振动传感器右侧）与“检测节点”（`spectrum_detect_node`，过程层 `x=1260, y=588`，攻击节点右侧，允许超过程序层右边界）。目标为风机振动传感器 `fan_vibration`，`reading_offset=40.0`；干扰链路 `L-sensor-fan_vibration` 从攻击节点左边缘水平接到振动传感器右边缘。检测节点通过 `layout.report_points` 从右边缘 `x=1350` 出发，向右到 `x=1675`，沿两台 IDS 连线右侧上行到 `y=142`，再左接到安全监测平台右下侧。风机运行时手动攻击后振动读数 3.2 → 43.2 mm/s，风机电流/转速读数不受影响，结束攻击后恢复。
+- `substation-network-attack.json` 是**另一套前端只读展示场景**，不是 GOOSE 接收实验；已与基准同步（25 台设备 / 34 条链路），只保留 `layout.cyber_demo` 的七阶段配置，场景列表仍按既有策略隐藏，可按场景 ID 创建运行。
+- `substation-goose-lab.json` 已**与基准场景同步**（26 台设备 / 34 条链路），保留 `layout.packet_replay` 与 `layout.goose_lab`，新增红色“网络攻击节点”（`net_attack_node`，`network_attack_source`，过程层 `x=1295, y=580`，过程网交换机正下方、设备分层区之外）。断路器保持初始合闸（`initial_position: closed`、`default_duration_ms: 40`），并清空基准的自动操作序列；GOOSE 样本、接收队列、保护判据后备通道和手动下发行为不变。
 - `substation-time-attack.json` 已**与基准场景同步**（同样的 25 台设备/34 条链路、复数授时链、差动保护、
   风机状态监测组与版式），额外新增：
   - “攻击节点”（`time_attack_node`，`em_attack_source`，站控层 `x=1005`）放在**授时系统-2 右侧**同一排，与授时系统-2 留出两列间距，
@@ -335,11 +329,6 @@ body 示例：
   - “检测节点”（`time_detect_node`，`spectrum_detector`，站控层 `x=870, y=150`）放在两个节点之间的空档，
     **顶部与站控层分层带顶部对齐**（占 `y=150..198`，水平居中在连线中点上方）；并在 `network-topology.js` 中
     按“检测节点 → 安全监测平台”生成一条监测上报线（`<device>:report`，与 IDS 管理口同一样式），表示检测结论上报平台。
-- `substation-goose-lab.json` 的过程网一侧新增红色“网络攻击节点”（`net_attack_node`，
-  `device_type: network_attack_source`），它是**真实设备**而不是部署资产，因此能被点选、能承载下发命令。
-  点选它 → “下发攻击报文（伪造跳闸帧）”/“下发抑制帧（状态号投毒）”/“批量下发（DDoS 演示）”。
-  它与 `sw-process` 之间的红色虚线由 `network-topology.js` 按 `attack_origin` 生成（`kind: attack-access`），
-  不占用 `deployment.connections` 的端口位，也不进入 `link_ids`。
 - 活动运行的 `time_us` 由步进推进。前端点击“开始推演”会自动按所选速度串行调用 `step`；暂停／停止先停止调度并等待在途步骤完成。`step_once` 在就绪或暂停时原子推进一步，完成后保持暂停，到期则保持 finished。
 - 界面自检：`node tools/ui_screenshot.mjs --url http://127.0.0.1:8765/ --scenario <id> --mode attack|none --out shot.png`
   可无头启动 Edge/Chrome、自动创建运行并截图，脚本同时打印节点/链路/画布/图例/传感器读数用于核对。

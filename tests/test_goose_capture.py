@@ -207,6 +207,29 @@ class TestGooseCapture(unittest.TestCase):
         with self.assertRaises(ValueError):
             configure_lab(config, {"protection": "yes"})
 
+    def test_scene_is_synced_from_baseline(self):
+        """GOOSE 实验场景除攻击节点外与基准设备/链路一致，并保留实验所需的初始合闸。"""
+        from sim2030.scenario import load_scenario
+        scene = ROOT / "scenarios/substation-goose-lab.json"
+        baseline = load_scenario(str(ROOT / "scenarios/substation-live.json"))
+        config = load_scenario(str(scene))
+        self.assertEqual(
+            {device.device_id for device in config.devices} - {device.device_id for device in baseline.devices},
+            {"net_attack_node"},
+        )
+        self.assertEqual({link.link_id for link in config.links}, {link.link_id for link in baseline.links})
+        self.assertEqual(config.environment, baseline.environment)
+        self.assertEqual(config.layout["layers"], baseline.layout["layers"])
+        self.assertEqual(config.layout["deployment"], baseline.layout["deployment"])
+        self.assertEqual(config.operations, [])
+        breaker = next(device for device in config.devices if device.device_id == "brk")
+        self.assertEqual(breaker.parameters["initial_position"], "closed")
+        self.assertEqual(breaker.initial_state, {"position": "closed"})
+        node = next(device for device in config.devices if device.device_id == "net_attack_node")
+        self.assertEqual(node.layout, {"x": 1295, "y": 580})
+        self.assertIn("packet_replay", config.layout)
+        self.assertIn("goose_lab", config.layout)
+
     def test_attack_node_owns_the_injection_actions(self):
         # 攻击能力挂在场景声明的红色攻击节点上：交换机不再是攻击下发目标，也没有攻击控制项。
         scene = ROOT / "scenarios/substation-goose-lab.json"

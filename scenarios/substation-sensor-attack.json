@@ -20,22 +20,21 @@
       "cooling_asset": "cool",
       "tap_step_ratio": 0.02,
       "nominal_tap": 5,
-      "cap_voltage_boost_kv": 0.2
+      "cap_voltage_boost_kv": 0.2,
+      "rated_load_mw": 4.0
     }
   },
   "devices": [
     {
       "device_id": "station",
-      "layout": {
-        "x": 285,
-        "y": 180
-      },
+      "layout": {"x": 285, "y": 180},
       "device_type": "station_control",
       "layer": "station",
       "name": "站端监控系统",
       "ports": {
         "mc_breaker": "mc",
         "prot": "prot",
+        "diff_prot": "diff_prot",
         "peer": "peer"
       },
       "parameters": {
@@ -48,10 +47,7 @@
     },
     {
       "device_id": "mc",
-      "layout": {
-        "x": 330,
-        "y": 356
-      },
+      "layout": {"x": 330, "y": 356},
       "device_type": "measurement_control",
       "layer": "bay",
       "name": "测控装置",
@@ -83,10 +79,7 @@
     },
     {
       "device_id": "prot",
-      "layout": {
-        "x": 195,
-        "y": 356
-      },
+      "layout": {"x": 195, "y": 356},
       "device_type": "overcurrent_protection",
       "layer": "bay",
       "name": "过流保护装置",
@@ -106,11 +99,30 @@
       }
     },
     {
-      "device_id": "ctl_brk",
-      "layout": {
-        "x": 60,
-        "y": 588
+      "device_id": "diff_prot",
+      "layout": {"x": 600, "y": 356},
+      "device_type": "differential_protection",
+      "layer": "bay",
+      "name": "差动保护装置",
+      "ports": {
+        "in": "in",
+        "out": "out",
+        "up": "up"
       },
+      "parameters": {
+        "in_port": "in",
+        "out_port": "out",
+        "up_port": "up",
+        "eval_interval_us": 100000,
+        "value_key": "ct_current",
+        "compare_mode": "absolute",
+        "differential_threshold_a": 10.0,
+        "duration_ticks": 1
+      }
+    },
+    {
+      "device_id": "ctl_brk",
+      "layout": {"x": 60, "y": 588},
       "device_type": "control_interface",
       "layer": "process",
       "name": "断路器智能终端",
@@ -125,10 +137,7 @@
     },
     {
       "device_id": "ctl_tap",
-      "layout": {
-        "x": 195,
-        "y": 588
-      },
+      "layout": {"x": 195, "y": 588},
       "device_type": "control_interface",
       "layer": "process",
       "name": "分接机构控制接口",
@@ -143,10 +152,7 @@
     },
     {
       "device_id": "ctl_cool",
-      "layout": {
-        "x": 330,
-        "y": 588
-      },
+      "layout": {"x": 870, "y": 588},
       "device_type": "control_interface",
       "layer": "process",
       "name": "冷却系统控制接口",
@@ -161,10 +167,7 @@
     },
     {
       "device_id": "brk",
-      "layout": {
-        "x": 60,
-        "y": 728
-      },
+      "layout": {"x": 60, "y": 728},
       "device_type": "switch",
       "layer": "process",
       "name": "断路器",
@@ -199,10 +202,7 @@
     },
     {
       "device_id": "tap",
-      "layout": {
-        "x": 195,
-        "y": 728
-      },
+      "layout": {"x": 195, "y": 728},
       "device_type": "transformer",
       "layer": "process",
       "name": "变压器",
@@ -213,7 +213,12 @@
       "parameters": {
         "control_port": "control",
         "nominal_tap": 5,
-        "initial_oil_temp_c": 40.0
+        "initial_oil_temp_c": 40.0,
+        "thermal": {
+          "max_heat_rise_c": 50.0,
+          "cooling_factor": 0.45,
+          "time_constant_s": 20.0
+        }
       },
       "capabilities": [
         {
@@ -233,10 +238,7 @@
     },
     {
       "device_id": "cool",
-      "layout": {
-        "x": 330,
-        "y": 728
-      },
+      "layout": {"x": 870, "y": 728},
       "device_type": "auxiliary",
       "layer": "process",
       "name": "冷却风机",
@@ -268,11 +270,72 @@
       ]
     },
     {
-      "device_id": "comp",
-      "layout": {
-        "x": 735,
-        "y": 858
+      "device_id": "fan_vibration",
+      "layout": {"x": 1005, "y": 588},
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "风机振动传感器",
+      "ports": {
+        "up": "up",
+        "physical": "physical"
       },
+      "parameters": {
+        "input_key": "vibration_mm_s",
+        "unit": "mm/s",
+        "sample_interval_us": 100000
+      }
+    },
+    {
+      "device_id": "fan_current",
+      "layout": {"x": 1005, "y": 658},
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "风机电流传感器",
+      "ports": {
+        "up": "up",
+        "physical": "physical"
+      },
+      "parameters": {
+        "input_key": "motor_current_a",
+        "unit": "A",
+        "sample_interval_us": 100000
+      }
+    },
+    {
+      "device_id": "fan_speed",
+      "layout": {"x": 1005, "y": 728},
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "风机转速传感器",
+      "ports": {
+        "up": "up",
+        "physical": "physical"
+      },
+      "parameters": {
+        "input_key": "rotation_speed_rpm",
+        "unit": "r/min",
+        "sample_interval_us": 100000
+      }
+    },
+    {
+      "device_id": "fan_condition_monitor",
+      "layout": {"x": 1140, "y": 658},
+      "device_type": "acquisition",
+      "layer": "process",
+      "name": "风机状态监测采集装置",
+      "ports": {
+        "in": "in",
+        "out": "out"
+      },
+      "parameters": {
+        "report_interval_us": 100000,
+        "out_port": "out",
+        "output_business_type": "sampling"
+      }
+    },
+    {
+      "device_id": "comp",
+      "layout": {"x": 600, "y": 588},
       "device_type": "compensation",
       "layer": "process",
       "name": "无功补偿支路",
@@ -301,10 +364,7 @@
     },
     {
       "device_id": "ct_current",
-      "layout": {
-        "x": 665,
-        "y": 728
-      },
+      "layout": {"x": 465, "y": 728},
       "device_type": "sensor",
       "layer": "process",
       "name": "电流互感器",
@@ -318,11 +378,24 @@
       }
     },
     {
-      "device_id": "vt_voltage",
-      "layout": {
-        "x": 760,
-        "y": 728
+      "device_id": "ct_current_2",
+      "layout": {"x": 735, "y": 728},
+      "device_type": "sensor",
+      "layer": "process",
+      "name": "电流互感器-2",
+      "ports": {
+        "up": "up"
       },
+      "parameters": {
+        "input_key": "line_current_a",
+        "channel": "ct_current",
+        "unit": "A",
+        "sample_interval_us": 100000
+      }
+    },
+    {
+      "device_id": "vt_voltage",
+      "layout": {"x": 600, "y": 728},
       "device_type": "sensor",
       "layer": "process",
       "name": "电压互感器",
@@ -337,10 +410,7 @@
     },
     {
       "device_id": "oil_temp",
-      "layout": {
-        "x": 570,
-        "y": 728
-      },
+      "layout": {"x": 330, "y": 728},
       "device_type": "sensor",
       "layer": "process",
       "name": "油温传感器",
@@ -356,10 +426,7 @@
     },
     {
       "device_id": "mu",
-      "layout": {
-        "x": 665,
-        "y": 588
-      },
+      "layout": {"x": 465, "y": 588},
       "device_type": "acquisition",
       "layer": "process",
       "name": "合并单元",
@@ -374,71 +441,11 @@
       }
     },
     {
-      "device_id": "fan_vibration",
-      "layout": {
-        "x": 465,
-        "y": 678
-      },
-      "device_type": "sensor",
-      "layer": "process",
-      "name": "风机振动传感器",
-      "ports": {
-        "up": "up",
-        "physical": "physical"
-      },
-      "parameters": {
-        "input_key": "vibration_mm_s",
-        "unit": "mm/s",
-        "sample_interval_us": 100000
-      }
-    },
-    {
-      "device_id": "fan_current",
-      "layout": {
-        "x": 465,
-        "y": 738
-      },
-      "device_type": "sensor",
-      "layer": "process",
-      "name": "风机电流传感器",
-      "ports": {
-        "up": "up",
-        "physical": "physical"
-      },
-      "parameters": {
-        "input_key": "motor_current_a",
-        "unit": "A",
-        "sample_interval_us": 100000
-      }
-    },
-    {
-      "device_id": "fan_speed",
-      "layout": {
-        "x": 465,
-        "y": 798
-      },
-      "device_type": "sensor",
-      "layer": "process",
-      "name": "风机转速传感器",
-      "ports": {
-        "up": "up",
-        "physical": "physical"
-      },
-      "parameters": {
-        "input_key": "rotation_speed_rpm",
-        "unit": "r/min",
-        "sample_interval_us": 100000
-      }
-    },
-    {
-      "device_id": "fan_condition_monitor",
-      "layout": {
-        "x": 465,
-        "y": 588
-      },
+      "device_id": "mu_2",
+      "layout": {"x": 735, "y": 588},
       "device_type": "acquisition",
       "layer": "process",
-      "name": "风机状态监测采集装置",
+      "name": "合并单元-2",
       "ports": {
         "in": "in",
         "out": "out"
@@ -451,10 +458,7 @@
     },
     {
       "device_id": "time_svc",
-      "layout": {
-        "x": 665,
-        "y": 180
-      },
+      "layout": {"x": 465, "y": 180},
       "device_type": "time_service",
       "layer": "station",
       "name": "授时系统",
@@ -469,11 +473,24 @@
       }
     },
     {
-      "device_id": "gnss_sat",
-      "layout": {
-        "x": 600,
-        "y": 80
+      "device_id": "time_svc_2",
+      "layout": {"x": 735, "y": 180},
+      "device_type": "time_service",
+      "layer": "station",
+      "name": "授时系统-2",
+      "ports": {
+        "sync": "sync",
+        "gnss": "gnss"
       },
+      "parameters": {
+        "sync_port": "sync",
+        "sync_interval_us": 1000000,
+        "time_source": "gnss"
+      }
+    },
+    {
+      "device_id": "gnss_sat",
+      "layout": {"x": 600, "y": 80},
       "device_type": "time_satellite",
       "layer": "external",
       "name": "授时卫星",
@@ -492,10 +509,7 @@
     },
     {
       "device_id": "peer_station",
-      "layout": {
-        "x": 285,
-        "y": 80
-      },
+      "layout": {"x": 285, "y": 80},
       "device_type": "remote_substation",
       "layer": "external",
       "name": "其他电站",
@@ -514,18 +528,15 @@
     },
     {
       "device_id": "sensor_attack_node",
-      "layout": {
-        "x": 330,
-        "y": 858
-      },
+      "layout": {"x": 1140, "y": 588},
       "device_type": "em_attack_source",
       "layer": "process",
-      "name": "攻击节点",
+      "name": "传感器攻击节点",
       "ports": {
         "emitter": "emitter"
       },
       "parameters": {
-        "target_asset_id": "cool",
+        "target_asset_id": "fan_vibration",
         "reading_offset": 40.0,
         "frequency_mhz": 900.0,
         "power_dbm": 30.0,
@@ -533,6 +544,42 @@
       },
       "initial_state": {
         "emitting": false
+      }
+    },
+    {
+      "device_id": "spectrum_detect_node",
+      "layout": {
+        "x": 1260,
+        "y": 588,
+        "report_points": [
+          {
+            "x": 1350,
+            "y": 612
+          },
+          {
+            "x": 1675,
+            "y": 612
+          },
+          {
+            "x": 1675,
+            "y": 142
+          },
+          {
+            "x": 1630,
+            "y": 142
+          }
+        ]
+      },
+      "device_type": "spectrum_detector",
+      "layer": "process",
+      "name": "检测节点",
+      "ports": {},
+      "parameters": {
+        "mode": "振动信号检测"
+      },
+      "initial_state": {
+        "mode": "振动信号检测",
+        "status": "idle"
       }
     }
   ],
@@ -549,7 +596,8 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 1000
+        "delay_us": 1000,
+        "protocol": "mms"
       }
     },
     {
@@ -564,7 +612,8 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 500
+        "delay_us": 500,
+        "protocol": "sv"
       }
     },
     {
@@ -579,7 +628,72 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 500
+        "delay_us": 500,
+        "protocol": "sv"
+      }
+    },
+    {
+      "link_id": "L-mu_2-mc",
+      "endpoint_a": [
+        "mu_2",
+        "out"
+      ],
+      "endpoint_b": [
+        "mc",
+        "mu"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 500,
+        "protocol": "sv"
+      }
+    },
+    {
+      "link_id": "L-mu_2-prot",
+      "endpoint_a": [
+        "mu_2",
+        "out"
+      ],
+      "endpoint_b": [
+        "prot",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 500,
+        "protocol": "sv"
+      }
+    },
+    {
+      "link_id": "L-mu-diff_prot",
+      "endpoint_a": [
+        "mu",
+        "out"
+      ],
+      "endpoint_b": [
+        "diff_prot",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 500,
+        "protocol": "sv"
+      }
+    },
+    {
+      "link_id": "L-mu_2-diff_prot",
+      "endpoint_a": [
+        "mu_2",
+        "out"
+      ],
+      "endpoint_b": [
+        "diff_prot",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 500,
+        "protocol": "sv"
       }
     },
     {
@@ -590,6 +704,21 @@
       ],
       "endpoint_b": [
         "mu",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
+      "link_id": "L-ct_current_2-mu_2",
+      "endpoint_a": [
+        "ct_current_2",
+        "up"
+      ],
+      "endpoint_b": [
+        "mu_2",
         "in"
       ],
       "link_type": "wired",
@@ -628,45 +757,6 @@
       }
     },
     {
-      "link_id": "L-fan-vibration-mu",
-      "endpoint_a": ["fan_vibration", "up"],
-      "endpoint_b": ["fan_condition_monitor", "in"],
-      "link_type": "wired",
-      "parameters": {"delay_us": 200}
-    },
-    {
-      "link_id": "L-fan-current-mu",
-      "endpoint_a": ["fan_current", "up"],
-      "endpoint_b": ["fan_condition_monitor", "in"],
-      "link_type": "wired",
-      "parameters": {"delay_us": 200}
-    },
-    {
-      "link_id": "L-fan-speed-mu",
-      "endpoint_a": ["fan_speed", "up"],
-      "endpoint_b": ["fan_condition_monitor", "in"],
-      "link_type": "wired",
-      "parameters": {"delay_us": 200}
-    },
-    {
-      "link_id": "L-cool-fan-vibration",
-      "endpoint_a": ["cool", "physical"],
-      "endpoint_b": ["fan_vibration", "physical"],
-      "link_type": "physical"
-    },
-    {
-      "link_id": "L-cool-fan-current",
-      "endpoint_a": ["cool", "physical"],
-      "endpoint_b": ["fan_current", "physical"],
-      "link_type": "physical"
-    },
-    {
-      "link_id": "L-cool-fan-speed",
-      "endpoint_a": ["cool", "physical"],
-      "endpoint_b": ["fan_speed", "physical"],
-      "link_type": "physical"
-    },
-    {
       "link_id": "L-mc-brk",
       "endpoint_a": [
         "mc",
@@ -678,7 +768,8 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 1000
+        "delay_us": 1000,
+        "protocol": "goose"
       }
     },
     {
@@ -693,7 +784,8 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 1000
+        "delay_us": 1000,
+        "protocol": "goose"
       }
     },
     {
@@ -708,7 +800,8 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 1000
+        "delay_us": 1000,
+        "protocol": "goose"
       }
     },
     {
@@ -723,7 +816,24 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 800
+        "delay_us": 800,
+        "protocol": "goose"
+      }
+    },
+    {
+      "link_id": "L-diff_prot-brk",
+      "endpoint_a": [
+        "diff_prot",
+        "out"
+      ],
+      "endpoint_b": [
+        "ctl_brk",
+        "up"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 800,
+        "protocol": "goose"
       }
     },
     {
@@ -738,7 +848,24 @@
       ],
       "link_type": "wired",
       "parameters": {
-        "delay_us": 1000
+        "delay_us": 1000,
+        "protocol": "mms"
+      }
+    },
+    {
+      "link_id": "L-diff_prot-station",
+      "endpoint_a": [
+        "diff_prot",
+        "up"
+      ],
+      "endpoint_b": [
+        "station",
+        "diff_prot"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 1000,
+        "protocol": "mms"
       }
     },
     {
@@ -799,6 +926,87 @@
       "link_type": "physical"
     },
     {
+      "link_id": "L-cool-fan-vibration",
+      "endpoint_a": [
+        "cool",
+        "physical"
+      ],
+      "endpoint_b": [
+        "fan_vibration",
+        "physical"
+      ],
+      "link_type": "physical"
+    },
+    {
+      "link_id": "L-cool-fan-current",
+      "endpoint_a": [
+        "cool",
+        "physical"
+      ],
+      "endpoint_b": [
+        "fan_current",
+        "physical"
+      ],
+      "link_type": "physical"
+    },
+    {
+      "link_id": "L-cool-fan-speed",
+      "endpoint_a": [
+        "cool",
+        "physical"
+      ],
+      "endpoint_b": [
+        "fan_speed",
+        "physical"
+      ],
+      "link_type": "physical"
+    },
+    {
+      "link_id": "L-fan-vibration-monitor",
+      "endpoint_a": [
+        "fan_vibration",
+        "up"
+      ],
+      "endpoint_b": [
+        "fan_condition_monitor",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
+      "link_id": "L-fan-current-monitor",
+      "endpoint_a": [
+        "fan_current",
+        "up"
+      ],
+      "endpoint_b": [
+        "fan_condition_monitor",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
+      "link_id": "L-fan-speed-monitor",
+      "endpoint_a": [
+        "fan_speed",
+        "up"
+      ],
+      "endpoint_b": [
+        "fan_condition_monitor",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
       "link_id": "L-brk-tap",
       "endpoint_a": [
         "brk",
@@ -826,6 +1034,21 @@
       }
     },
     {
+      "link_id": "L-time_svc_2-mu_2",
+      "endpoint_a": [
+        "time_svc_2",
+        "sync"
+      ],
+      "endpoint_b": [
+        "mu_2",
+        "in"
+      ],
+      "link_type": "wired",
+      "parameters": {
+        "delay_us": 200
+      }
+    },
+    {
       "link_id": "L-gnss-time_svc",
       "endpoint_a": [
         "gnss_sat",
@@ -833,6 +1056,22 @@
       ],
       "endpoint_b": [
         "time_svc",
+        "gnss"
+      ],
+      "link_type": "wireless",
+      "parameters": {
+        "delay_us": 20000,
+        "loss_rate": 0.0
+      }
+    },
+    {
+      "link_id": "L-gnss-time_svc_2",
+      "endpoint_a": [
+        "gnss_sat",
+        "down"
+      ],
+      "endpoint_b": [
+        "time_svc_2",
         "gnss"
       ],
       "link_type": "wireless",
@@ -858,13 +1097,13 @@
       }
     },
     {
-      "link_id": "L-sensor-cool",
+      "link_id": "L-sensor-fan_vibration",
       "endpoint_a": [
         "sensor_attack_node",
         "emitter"
       ],
       "endpoint_b": [
-        "cool",
+        "fan_vibration",
         "physical"
       ],
       "link_type": "interference",
@@ -885,7 +1124,7 @@
         "title": "外部信号与站间业务",
         "x": 12,
         "y": 44,
-        "width": 840,
+        "width": 1245,
         "height": 94
       },
       {
@@ -893,7 +1132,7 @@
         "title": "站控层",
         "x": 12,
         "y": 150,
-        "width": 840,
+        "width": 1245,
         "height": 94
       },
       {
@@ -901,7 +1140,7 @@
         "title": "间隔层",
         "x": 12,
         "y": 322,
-        "width": 840,
+        "width": 1245,
         "height": 98
       },
       {
@@ -909,8 +1148,8 @@
         "title": "过程层",
         "x": 12,
         "y": 550,
-        "width": 840,
-        "height": 400
+        "width": 1245,
+        "height": 262
       }
     ],
     "deployment": {
@@ -924,7 +1163,7 @@
           "switch": {
             "id": "sw-station",
             "name": "站控网交换机",
-            "x": 890,
+            "x": 1295,
             "y": 253,
             "width": 142,
             "height": 64
@@ -932,7 +1171,7 @@
           "probe": {
             "id": "ids-station",
             "name": "站控网 IDS",
-            "x": 1070,
+            "x": 1475,
             "y": 253,
             "width": 155,
             "height": 64,
@@ -952,7 +1191,8 @@
               "anchor_y": 48,
               "business_ports": [
                 "mc_breaker",
-                "prot"
+                "prot",
+                "diff_prot"
               ]
             },
             {
@@ -974,11 +1214,22 @@
               "business_ports": [
                 "up"
               ]
+            },
+            {
+              "device_id": "diff_prot",
+              "interface_id": "ETH-ST",
+              "switch_port": "P4",
+              "anchor_x": 45,
+              "anchor_y": 0,
+              "business_ports": [
+                "up"
+              ]
             }
           ],
           "link_ids": [
             "L-station-mc",
-            "L-prot-station"
+            "L-prot-station",
+            "L-diff_prot-station"
           ]
         },
         {
@@ -988,7 +1239,7 @@
           "switch": {
             "id": "sw-process",
             "name": "过程网交换机",
-            "x": 890,
+            "x": 1295,
             "y": 438,
             "width": 142,
             "height": 90
@@ -996,7 +1247,7 @@
           "probe": {
             "id": "ids-process",
             "name": "过程网 IDS",
-            "x": 1070,
+            "x": 1475,
             "y": 451,
             "width": 155,
             "height": 64,
@@ -1009,10 +1260,10 @@
           "mirror_direction": "both",
           "connections": [
             {
-              "device_id": "prot",
+              "device_id": "diff_prot",
               "interface_id": "ETH-PR",
               "switch_port": "P1",
-              "anchor_x": 65,
+              "anchor_x": 45,
               "anchor_y": 48,
               "business_ports": [
                 "in",
@@ -1033,17 +1284,18 @@
               ]
             },
             {
-              "device_id": "ctl_brk",
+              "device_id": "prot",
               "interface_id": "ETH-PR",
               "switch_port": "P3",
-              "anchor_x": 45,
-              "anchor_y": 0,
+              "anchor_x": 65,
+              "anchor_y": 48,
               "business_ports": [
-                "up"
+                "in",
+                "out"
               ]
             },
             {
-              "device_id": "ctl_tap",
+              "device_id": "ctl_brk",
               "interface_id": "ETH-PR",
               "switch_port": "P4",
               "anchor_x": 45,
@@ -1053,7 +1305,7 @@
               ]
             },
             {
-              "device_id": "ctl_cool",
+              "device_id": "ctl_tap",
               "interface_id": "ETH-PR",
               "switch_port": "P5",
               "anchor_x": 45,
@@ -1073,9 +1325,29 @@
               ]
             },
             {
-              "device_id": "fan_condition_monitor",
+              "device_id": "mu_2",
               "interface_id": "ETH-PR",
               "switch_port": "P7",
+              "anchor_x": 45,
+              "anchor_y": 0,
+              "business_ports": [
+                "out"
+              ]
+            },
+            {
+              "device_id": "ctl_cool",
+              "interface_id": "ETH-PR",
+              "switch_port": "P8",
+              "anchor_x": 45,
+              "anchor_y": 0,
+              "business_ports": [
+                "up"
+              ]
+            },
+            {
+              "device_id": "fan_condition_monitor",
+              "interface_id": "ETH-PR",
+              "switch_port": "P9",
               "anchor_x": 45,
               "anchor_y": 0,
               "business_ports": [
@@ -1086,15 +1358,24 @@
           "link_ids": [
             "L-mu-mc",
             "L-mu-prot",
+            "L-mu_2-mc",
+            "L-mu_2-prot",
+            "L-mu-diff_prot",
+            "L-mu_2-diff_prot",
             "L-mc-brk",
             "L-mc-tap",
             "L-mc-cool",
-            "L-prot-brk"
+            "L-prot-brk",
+            "L-diff_prot-brk"
           ]
         }
       ],
       "direct_links": {
         "L-ct-mu": {
+          "role": "measurement",
+          "label": "传感器采集接线"
+        },
+        "L-ct_current_2-mu_2": {
           "role": "measurement",
           "label": "传感器采集接线"
         },
@@ -1106,87 +1387,107 @@
           "role": "measurement",
           "label": "传感器采集接线"
         },
-        "L-fan-vibration-mu": {
-          "role": "measurement",
-          "label": "风机振动采集"
-        },
-        "L-fan-current-mu": {
-          "role": "measurement",
-          "label": "风机电流采集"
-        },
-        "L-fan-speed-mu": {
-          "role": "measurement",
-          "label": "风机转速采集"
-        },
         "L-cool-fan-vibration": {
           "role": "physical",
           "label": "风机振动测点",
           "points": [
-            { "x": 420, "y": 752 },
-            { "x": 440, "y": 752 },
-            { "x": 440, "y": 702 },
-            { "x": 465, "y": 702 }
+            {
+              "x": 960,
+              "y": 752
+            },
+            {
+              "x": 976,
+              "y": 752
+            },
+            {
+              "x": 976,
+              "y": 612
+            },
+            {
+              "x": 1005,
+              "y": 612
+            }
           ]
         },
         "L-cool-fan-current": {
           "role": "physical",
           "label": "风机电流测点",
           "points": [
-            { "x": 420, "y": 752 },
-            { "x": 440, "y": 752 },
-            { "x": 440, "y": 762 },
-            { "x": 465, "y": 762 }
+            {
+              "x": 960,
+              "y": 752
+            },
+            {
+              "x": 984,
+              "y": 752
+            },
+            {
+              "x": 984,
+              "y": 682
+            },
+            {
+              "x": 1005,
+              "y": 682
+            }
           ]
         },
         "L-cool-fan-speed": {
           "role": "physical",
           "label": "风机转速测点",
           "points": [
-            { "x": 420, "y": 752 },
-            { "x": 440, "y": 752 },
-            { "x": 440, "y": 822 },
-            { "x": 465, "y": 822 }
+            {
+              "x": 960,
+              "y": 752
+            },
+            {
+              "x": 1005,
+              "y": 752
+            }
           ]
+        },
+        "L-fan-vibration-monitor": {
+          "role": "measurement",
+          "label": "风机振动采集"
+        },
+        "L-fan-current-monitor": {
+          "role": "measurement",
+          "label": "风机电流采集"
+        },
+        "L-fan-speed-monitor": {
+          "role": "measurement",
+          "label": "风机转速采集"
         },
         "L-time-mu": {
           "role": "timing",
           "label": "专用对时连接"
         },
+        "L-time_svc_2-mu_2": {
+          "role": "timing",
+          "label": "专用对时连接"
+        },
         "L-tap-oil": {
           "role": "physical",
-          "label": "变压器与油温传感器的热耦合",
-          "points": [
-            {
-              "x": 240,
-              "y": 776
-            },
-            {
-              "x": 240,
-              "y": 798
-            },
-            {
-              "x": 510,
-              "y": 798
-            },
-            {
-              "x": 510,
-              "y": 776
-            }
-          ]
+          "label": "变压器与油温传感器的热耦合"
         },
-        "L-sensor-cool": {
+        "L-sensor-fan_vibration": {
           "role": "interference",
-          "label": "传感器攻击干扰路径",
+          "label": "振动传感器干扰路径",
           "points": [
-            { "x": 375, "y": 858 },
-            { "x": 375, "y": 776 }
+            {
+              "x": 1140,
+              "y": 612
+            },
+            {
+              "x": 1095,
+              "y": 612
+            }
           ]
         }
       },
       "manager": {
         "id": "security-manager",
         "name": "安全监测平台",
-        "x": 1070,
+        "x": 1475,
         "y": 80,
         "width": 155,
         "height": 72

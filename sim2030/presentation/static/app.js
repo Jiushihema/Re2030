@@ -1201,6 +1201,19 @@ const LINK_TYPE_META = {
   physical: { label: "热传导耦合", cls: "line-physical", title: "变压器本体热传导至油温计的物理接触测量关系" },
 };
 
+const PROTOCOL_META = {
+  mms: { label: "MMS", cls: "protocol-mms", title: "站控网 MMS（IEC 61850-8-1 客户端/服务器）" },
+  sv: { label: "SV", cls: "protocol-sv", title: "过程网采样值 SV（IEC 61850-9-2 / 9-2LE）" },
+  goose: { label: "GOOSE", cls: "protocol-goose", title: "过程网 GOOSE 控制/跳闸（IEC 61850-8-1）" },
+};
+
+const LINK_LEGEND_GROUPS = [
+  { label: "IDS 监测", kinds: ["mirror", "management"], title: "流量镜像与 IDS 监测上报" },
+  { label: "本地连接", kinds: ["measurement"], title: "传感器与采集装置之间的本地采集接线" },
+  { label: "电气/物理连接", kinds: ["hardwire", "electrical", "physical"], title: "控制硬接线、一次电气主回路与热/机械物理耦合" },
+  { label: "无线链路", kinds: ["wireless"], title: "GNSS 星地与站间无线链路" },
+];
+
 /* 解析节点坐标：优先使用场景声明，缺失坐标的设备按所在层自动补位 */
 function resolveNodeCoordinates(devices, layout) {
   const declaredBands = {};
@@ -1484,19 +1497,49 @@ function renderLinkLegend(links) {
   const box = $("#legend-links");
   if (!box) return;
   const present = [];
+  const protocols = [];
   const displayed = state.networkModel?.cables || links.map(link => ({ kind: link.link_type || "wired" }));
   displayed.forEach((link) => {
     const type = link.kind;
     if (!present.includes(type)) present.push(type);
+    (link.protocols || []).forEach((protocol) => {
+      if (!protocols.includes(protocol)) protocols.push(protocol);
+    });
   });
-  const ordered = Object.keys(LINK_TYPE_META)
-    .filter((type) => present.includes(type))
-    .concat(present.filter((type) => !LINK_TYPE_META[type]));
-  box.innerHTML = ordered.map((type) => {
-    const meta = LINK_TYPE_META[type] || { label: type, cls: "", title: type };
+  const legendItem = (label, kinds, title) => {
+    const active = kinds.filter((kind) => present.includes(kind));
+    if (!active.length) return "";
+    const samples = active.map((kind) => {
+      const meta = LINK_TYPE_META[kind] || { cls: "" };
+      return `<span class="legend-line ${meta.cls}"></span>`;
+    }).join("");
+    return `<span class="legend-item" title="${esc(title || label)}">${samples}${esc(label)}</span>`;
+  };
+  const orderedProtocols = Object.keys(PROTOCOL_META).filter((protocol) => protocols.includes(protocol));
+  const protocolHtml = orderedProtocols.map((protocol) => {
+    const meta = PROTOCOL_META[protocol];
     return `<span class="legend-item" title="${esc(meta.title)}">`
       + `<span class="legend-line ${meta.cls}"></span>${esc(meta.label)}</span>`;
   }).join("");
+  const ptpHtml = legendItem("PTP", ["timing"], "专用对时（PTP / IRIG-B / 1PPS，当前以专用对时链路展示）");
+  const legacyHtml = protocols.length
+    ? ""
+    : ["station", "process"].map((kind) => {
+      const meta = LINK_TYPE_META[kind];
+      return legendItem(meta.label, [kind], meta.title);
+    }).join("");
+  const groupHtml = LINK_LEGEND_GROUPS.map((group) => legendItem(group.label, group.kinds, group.title)).join("");
+  const groupedKinds = new Set([...LINK_LEGEND_GROUPS.flatMap((group) => group.kinds),
+    "station", "process", "timing"]);
+  const otherHtml = present.filter((kind) => !groupedKinds.has(kind))
+    .map((kind) => {
+      const meta = LINK_TYPE_META[kind] || { label: kind, cls: "", title: kind };
+      return legendItem(meta.label, [kind], meta.title);
+    }).join("");
+  const leftHtml = protocolHtml + ptpHtml;
+  const rightHtml = [legacyHtml, groupHtml, otherHtml].filter(Boolean).join("");
+  box.innerHTML = leftHtml
+    + (rightHtml ? `<span class="legend-divider"></span>${rightHtml}` : "");
 
   const attackItem = $("#legend-attack-particle");
   if (attackItem) attackItem.style.display = present.includes("interference") ? "" : "none";
@@ -1707,16 +1750,24 @@ function renderTopologyLinks() {
   group.dataset.renderKey = key;
   group.replaceChildren();
   for (const cable of model.cables) {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", NetworkTopology.pathData(cable.points));
-    path.setAttribute("class", `topo-link ${cable.kind}`);
-    path.setAttribute("fill", "none");
-    path.dataset.linkId = cable.id;
-    if (cable.kind === "mirror" || cable.kind === "management") path.setAttribute("marker-end", "url(#monitor-arrow)");
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = cable.title;
-    path.appendChild(title);
-    group.appendChild(path);
+    const strands = cable.strands?.length
+      ? cable.strands
+      : [{ protocol: cable.protocols?.[0] || "", points: cable.points }];
+    for (const strand of strands) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", NetworkTopology.pathData(strand.points));
+      path.setAttribute("class", `topo-link ${cable.kind}${strand.protocol ? ` protocol-${strand.protocol}` : ""}`
+        + (cable.strands?.length ? " strand" : ""));
+      path.setAttribute("fill", "none");
+      path.dataset.linkId = cable.id;
+      if (strand.protocol) path.dataset.protocol = strand.protocol;
+      if (cable.kind === "mirror" || cable.kind === "management") path.setAttribute("marker-end", "url(#monitor-arrow)");
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      const protocolMeta = PROTOCOL_META[strand.protocol];
+      title.textContent = protocolMeta ? `${cable.title} · ${protocolMeta.label}` : cable.title;
+      path.appendChild(title);
+      group.appendChild(path);
+    }
   }
 }
 

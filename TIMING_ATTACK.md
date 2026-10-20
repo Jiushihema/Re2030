@@ -43,7 +43,10 @@ node --test tests/*.cjs
 
 本次也实际运行 Chromium，验证创建场景、正常波形、四个开关、攻击控制、双链路时间偏移、编号对照、跳闸、恢复、光点暂停、事件时序及切换场景后的界面隔离。
 
-完整 Python 回归中发现两项原有网络场景问题，未扩大本次改动范围：
+2026-10-20 合并 `main` 的 `63c9472` 后，完整 Python 回归共 166 项：165 项通过，剩余一项原有数据校验问题：
 
 - `test_attack_node_owns_the_injection_actions`：仓库 GOOSE 通信日志与导入索引的 SHA-256 不一致；没有关闭完整性校验或修改原始数据。
-- `test_scene_validates_and_is_listed`：旧网络展示场景已被列表实现隐藏，但测试仍要求列出。
+
+旧场景列表测试问题已由最新主分支修复。JavaScript 58 项全部通过。Chromium 验证了上游 MMS／SV／GOOSE 接线与授时浮窗、运动波形、攻击重置、跳闸及恢复流程兼容。另使用原始附件在临时目录中重新导入 3093 帧，验证了合并后的网络场景加载、推进和手动报文下发；未覆盖仓库中的数据文件。
+
+本次通过合并提交保留功能分支和主分支双方历史，不重写已推送提交。若本地仍停留在未完成的 rebase，先执行 `git rebase --abort`，再在 `feat/timing-attack-demo` 上执行 `git pull --ff-only`。
