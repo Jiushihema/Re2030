@@ -80,13 +80,29 @@ def register_device(type_name: str, factory: DeviceFactory) -> None:
     DEVICE_TYPES[type_name] = factory
 
 
+DeviceOverride = Callable[[DeviceSpec], "Device | None"]
+
+# 设备创建前的覆写钩子：模块可注册自己的专用实现，而无需让本模块反向依赖具体业务。
+_DEVICE_OVERRIDES: List[DeviceOverride] = []
+
+
+def register_device_override(override: DeviceOverride) -> None:
+    """注册设备创建前的覆写钩子。
+
+    钩子按注册顺序调用，返回非 ``None`` 时采用该实例，否则继续走
+    :data:`DEVICE_TYPES` 常规工厂。这样 ``scenario`` 保持通用，不出现具体实验
+    的名称，业务模块把自己的行为覆盖注册进来即可。
+    """
+    if not callable(override):
+        raise TypeError("设备覆写钩子必须是可调用对象")
+    _DEVICE_OVERRIDES.append(override)
+
+
 def create_device(spec: DeviceSpec) -> Device:
-    role = spec.parameters.get("timing_role")
-    if role:
-        from sim2030.timing import FACTORIES
-        if role not in FACTORIES:
-            raise ValueError(f"未知授时实验角色：{role}")
-        return FACTORIES[role](spec)
+    for override in _DEVICE_OVERRIDES:
+        device = override(spec)
+        if device is not None:
+            return device
     factory = DEVICE_TYPES.get(spec.device_type)
     if factory is None:
         raise KeyError(f"未知设备类型 {spec.device_type!r}（device_id={spec.device_id}）")

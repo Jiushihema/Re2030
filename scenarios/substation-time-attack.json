@@ -1119,6 +1119,12 @@
       "sample_rate_hz": 4000,
       "sample_period_us": 250,
       "window_samples": 80,
+      "protection_device_id": "diff_prot",
+      "terminal_device_id": "ctl_brk",
+      "breaker_device_id": "brk",
+      "reference_mu_id": "mu",
+      "lagging_mu_id": "mu_2",
+      "lagging_clock_id": "time_svc_2",
       "description": "单相演示：CT 有效值块内保持，MU 合成正弦采样；秒序号+smpCnt 对齐，真实时刻仅作证据。"
     },
   "layers": [
