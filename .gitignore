@@ -20,3 +20,6 @@ codes.zip
 # 文档中的大型二进制参考资料（保留本地方便查阅，不上传仓库）
 docs/references/
 docs/*.docx
+
+# 过程目录（临时脚本、渲染图、dump、测试临时目录）
+_work/

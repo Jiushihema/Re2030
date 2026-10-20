@@ -384,7 +384,7 @@ test('all scenario layouts keep devices in their layers and IDS mirror ports ali
       const fanSensorIds = ['fan_vibration', 'fan_current', 'fan_speed'];
       const fanSensors = fanSensorIds.map(id => config.devices.find(d => d.device_id === id));
       assert.ok(fanSensors.every(d => d.layout.x === 1005), 'fan sensors must form one vertical column');
-      assert.deepEqual(fanSensors.map(d => d.layout.y), [588, 658, 728]);
+      assert.deepEqual(fanSensors.map(d => d.layout.y), [728, 658, 588]);
       const monitor = config.devices.find(d => d.device_id === 'fan_condition_monitor');
       assert.deepEqual([monitor.layout.x, monitor.layout.y], [1140, 658],
         'fan monitor must sit beside the middle fan sensor');
@@ -394,13 +394,13 @@ test('all scenario layouts keep devices in their layers and IDS mirror ports ali
       const attack = config.devices.find(d => d.device_id === 'sensor_attack_node');
       assert.equal(attack.parameters.target_asset_id, 'fan_vibration',
         'sensor attack must target the vibration sensor');
-      assert.deepEqual([attack.layout.x, attack.layout.y], [1140, 588],
+      assert.deepEqual([attack.layout.x, attack.layout.y], [1140, 728],
         'attack source must sit right of the vibration sensor');
       const detector = config.devices.find(d => d.device_id === 'spectrum_detect_node');
-      assert.deepEqual([detector.layout.x, detector.layout.y, detector.layer], [1260, 588, 'process'],
+      assert.deepEqual([detector.layout.x, detector.layout.y, detector.layer], [1260, 728, 'process'],
         'sensor detection node must sit right of the attack node, outside the process band');
       assert.deepEqual(config.layout.deployment.direct_links['L-sensor-fan_vibration'].points,
-        [{ x: 1140, y: 612 }, { x: 1095, y: 612 }],
+        [{ x: 1140, y: 752 }, { x: 1095, y: 752 }],
         'attack interference path must connect the attack node to the vibration sensor');
     }
   }

@@ -219,8 +219,8 @@ class TestLoadScenario(unittest.TestCase):
             self.assertEqual(devices[device_id].layer, "process")
             self.assertGreater(devices[device_id].layout["x"], cool.layout["x"], "风机附属设备应在冷却风机右侧")
 
-        # 三台传感器竖直成列，采集装置在它们右侧、与中间那台同排。
-        sensors = ("fan_vibration", "fan_current", "fan_speed")
+        # 三台传感器竖直成列：从上到下依次为转速、电流、振动。
+        sensors = ("fan_speed", "fan_current", "fan_vibration")
         column_x = {devices[device_id].layout["x"] for device_id in sensors}
         self.assertEqual(len(column_x), 1, "三台风机传感器必须竖直成列")
         rows = [devices[device_id].layout["y"] for device_id in sensors]

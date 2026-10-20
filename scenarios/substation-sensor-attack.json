@@ -271,7 +271,7 @@
     },
     {
       "device_id": "fan_vibration",
-      "layout": {"x": 1005, "y": 588},
+      "layout": {"x": 1005, "y": 728},
       "device_type": "sensor",
       "layer": "process",
       "name": "风机振动传感器",
@@ -303,7 +303,7 @@
     },
     {
       "device_id": "fan_speed",
-      "layout": {"x": 1005, "y": 728},
+      "layout": {"x": 1005, "y": 588},
       "device_type": "sensor",
       "layer": "process",
       "name": "风机转速传感器",
@@ -528,7 +528,7 @@
     },
     {
       "device_id": "sensor_attack_node",
-      "layout": {"x": 1140, "y": 588},
+      "layout": {"x": 1140, "y": 728},
       "device_type": "em_attack_source",
       "layer": "process",
       "name": "传感器攻击节点",
@@ -550,15 +550,15 @@
       "device_id": "spectrum_detect_node",
       "layout": {
         "x": 1260,
-        "y": 588,
+        "y": 728,
         "report_points": [
           {
             "x": 1350,
-            "y": 612
+            "y": 752
           },
           {
             "x": 1675,
-            "y": 612
+            "y": 752
           },
           {
             "x": 1675,
@@ -1396,16 +1396,8 @@
               "y": 752
             },
             {
-              "x": 976,
-              "y": 752
-            },
-            {
-              "x": 976,
-              "y": 612
-            },
-            {
               "x": 1005,
-              "y": 612
+              "y": 752
             }
           ]
         },
@@ -1440,8 +1432,16 @@
               "y": 752
             },
             {
-              "x": 1005,
+              "x": 976,
               "y": 752
+            },
+            {
+              "x": 976,
+              "y": 612
+            },
+            {
+              "x": 1005,
+              "y": 612
             }
           ]
         },
@@ -1475,11 +1475,11 @@
           "points": [
             {
               "x": 1140,
-              "y": 612
+              "y": 752
             },
             {
               "x": 1095,
-              "y": 612
+              "y": 752
             }
           ]
         }

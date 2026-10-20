@@ -56,19 +56,21 @@ class TestSensorAttackScenario(unittest.TestCase):
         self.assertEqual(attack.device_type, "em_attack_source")
         self.assertEqual(attack.layer, "process")
         self.assertEqual(attack.name, "传感器攻击节点")
-        self.assertEqual(attack.layout, {"x": 1140, "y": 588})
+        self.assertEqual(attack.layout, {"x": 1140, "y": 728})
         self.assertEqual(attack.parameters["target_asset_id"], "fan_vibration")
         self.assertEqual(attack.parameters["attack_type"], "sensor")
         self.assertEqual(devices["fan_vibration"].device_type, "sensor")
+        self.assertEqual(devices["fan_vibration"].layout["y"], 728)
+        self.assertEqual(devices["fan_speed"].layout["y"], 588)
 
         detector = devices["spectrum_detect_node"]
         self.assertEqual(detector.device_type, "spectrum_detector")
         self.assertEqual(detector.layer, "process")
         self.assertEqual(detector.layout["x"], 1260)
-        self.assertEqual(detector.layout["y"], 588)
+        self.assertEqual(detector.layout["y"], 728)
         self.assertEqual(detector.parameters["mode"], "振动信号检测")
         self.assertEqual(detector.layout["report_points"], [
-            {"x": 1350, "y": 612}, {"x": 1675, "y": 612},
+            {"x": 1350, "y": 752}, {"x": 1675, "y": 752},
             {"x": 1675, "y": 142}, {"x": 1630, "y": 142},
         ])
 
@@ -78,7 +80,7 @@ class TestSensorAttackScenario(unittest.TestCase):
         self.assertEqual(link.endpoint_b, ("fan_vibration", "physical"))
         display = config.layout["deployment"]["direct_links"]["L-sensor-fan_vibration"]
         self.assertEqual(display["role"], "interference")
-        self.assertEqual(display["points"], [{"x": 1140, "y": 612}, {"x": 1095, "y": 612}])
+        self.assertEqual(display["points"], [{"x": 1140, "y": 752}, {"x": 1095, "y": 752}])
 
     def test_fan_sensors_feed_a_dedicated_merging_unit(self):
         config = load_scenario(SCENARIO_PATH)
