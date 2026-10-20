@@ -21,7 +21,7 @@
 `scenario.py`（场景校验与设备工厂）、`contracts.py`（数据契约）、`constants.py`（常量）。
 
 约束：后端仅用 Python 标准库，无第三方依赖；测试使用 `unittest`。当前 `python -m unittest discover -s tests -t .`
-共 **150 项**，全部通过。`substation-network-attack` 按既有策略不出现在 `GET /api/scenarios` 列表，
+共 **155 项**，全部通过。`substation-network-attack` 按既有策略不出现在 `GET /api/scenarios` 列表，
 `tests/test_network_attack_scene.py` 已改为验证“列表隐藏但可按 ID 创建运行”。
 
 ## 2. 目录结构
@@ -44,6 +44,7 @@ Re2030/
 ├── scenarios/substation-attack-demo.json # 攻防演示场景（攻击→识别→防御→评估闭环）
 ├── scenarios/substation-em-attack.json # 电磁攻击场景（电流互感器读数篡改 + 频谱检测节点）
 ├── scenarios/substation-time-attack.json # 授时攻击场景（针对授时系统-2 的时钟欺骗 + 检测节点）
+├── scenarios/substation-integrated-attack.json # 四类攻击/检测节点集成拓扑场景
 ├── scenarios/observations/           # 文件回放观测数据（events.jsonl）
 ├── tests/                    # unittest 回归测试
 ├── docs/                     # 设计文档（含接口规范）
@@ -308,8 +309,8 @@ body 示例：
 
 ## 8. 验证与已知风险
 
-- 验证命令：`python -m unittest discover -s tests -t .` → `Ran 150 tests`，全部通过；
-  `node --test tests/test_network_topology.cjs tests/test_measurement_sources.cjs tests/test_simulation_player.cjs tests/test_cyber_demo.cjs` → 52 passed；
+- 验证命令：`python -m unittest discover -s tests -t .` → `Ran 155 tests`，全部通过；
+  `node --test tests/test_network_topology.cjs tests/test_measurement_sources.cjs tests/test_simulation_player.cjs tests/test_cyber_demo.cjs` → 53 passed；
   前端语法：`node --check sim2030/presentation/static/{app,simulation-player,network-topology}.js` 均通过。
 - 演示页面已经完成态势拓扑大屏；使用 `substation-attack-demo` 自动推演到约 1.5s 后可见：
   识别疑似异常（tap 琥珀色）→ 防御动作 planned/executing/succeeded → 攻击结束后恢复正常。

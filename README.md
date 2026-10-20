@@ -20,6 +20,7 @@
 - `scenarios/substation-live.json`：基础 10kV 变电站场景。
 - `scenarios/substation-network-attack.json`：基于基础场景的网络攻击前端展示。
 - `scenarios/substation-goose-*.json`：message_core 交付包的正常、伪造、抑制、DoS 离线回放。
+- `scenarios/substation-integrated-attack.json`：电磁、GOOSE、传感器、授时四类攻击/检测节点集成的拓扑场景。
 - `tests/`：使用标准库 `unittest` 的回归测试。
 - `main.py`：无界面运行入口或演示平面入口。
 

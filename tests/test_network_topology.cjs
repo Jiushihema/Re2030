@@ -351,6 +351,19 @@ test('the network attack node is a red device cabled to its access switch', () =
   assert.equal(model.routes.size, lab.links.length);
 });
 
+test('integrated attack scene shows three detectors and network attack access', () => {
+  const integrated = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '../scenarios/substation-integrated-attack.json'), 'utf8'));
+  const coords = Object.fromEntries(integrated.devices.map(d => [d.device_id, d.layout]));
+  const model = topology.build(integrated, coords);
+  for (const detector of ['em_detect_node', 'sensor_detect_node', 'time_detect_node']) {
+    assert.ok(model.cables.some(c => c.id === `${detector}:report`), `${detector} 应有上报线`);
+  }
+  assert.ok(model.cables.some(c => c.id === 'process:attack'), '网络攻击节点应有攻击接入线');
+  assert.equal(model.cables.filter(c => c.kind === 'process').length, 9);
+  assert.equal(model.routes.size, integrated.links.length);
+});
+
 test('all scenario layouts keep devices in their layers and IDS mirror ports aligned', () => {
   for (const filename of ['substation-live.json', 'substation-attack-demo.json', 'substation-em-attack.json', 'substation-network-attack.json', 'substation-sensor-attack.json']) {
     const config = JSON.parse(fs.readFileSync(path.join(__dirname, '../scenarios', filename), 'utf8'));
