@@ -205,30 +205,15 @@ class TimingProtection(DifferentialProtectionDevice):
             self.history.append({"time_us": self._now, "id_a": self.report["id_a"], "ir_a": self.report["ir_a"]})
         return actions
 
-    def observe_chain(self, result):
-        """Record received commands and physical completion, not just issued trips."""
-        for message in result.messages:
-            if (message.receiver_id == "ctl_brk" and message.business_type == BusinessType.COMMAND
-                    and message.payload.get("parameters", {}).get("source") == "timing_differential"
-                    and message.message_id not in self._observed):
-                # Engine results contain sends as well as deliveries; delivered messages
-                # also generate a downstream command whose sender is the terminal.
-                if not any(m.sender_id == "ctl_brk" and m.related_request == message.related_request
-                           for m in result.messages):
-                    continue
-                self._observed[message.message_id] = True
-                self.events.append({"time_us": result.time_us, "text": "智能终端接收差动跳闸指令，转发控制硬接线"})
-        for device_id, key, label in (("time_svc_2", "timing_offset_us", "授时系统-2偏移"),
-                                       ("mu_2", "clock_offset_us", "合并单元-2时钟偏移"),
-                                       ("brk", "position", "断路器位置")):
-            value = result.device_snapshots.get(device_id, {}).get("state", {}).get(key)
-            previous = self._observed.get(device_id)
-            if value is not None and previous != value:
-                self._observed[device_id] = value
-                self.events.append({"time_us": result.time_us, "text": f"{label}：{value}",
-                                    "device_id": device_id})
-        # Store the post-observation state in the same truth snapshot.
-        result.device_snapshots[self.asset_id] = self.snapshot()
+    def record_chain_event(self, time_us, text, device_id=""):
+        """由 :class:`TimingLab` 在全站视图中观察到链路事件后回调写入。
+
+        设备只负责保存自己的事件；不再改写 ``StepResult`` 快照。
+        """
+        event = {"time_us": time_us, "text": text}
+        if device_id:
+            event["device_id"] = device_id
+        self.events.append(event)
 
     def set_parameter(self, key, value):
         if key in ("minimum_enabled", "restraint_enabled", "direction_enabled", "ct_enabled"):
@@ -261,3 +246,98 @@ class TimingProtection(DifferentialProtectionDevice):
 
 
 FACTORIES = {"clock": TimingService, "mu": TimingMU, "protection": TimingProtection, "attack": TimingAttack}
+
+# 授时实验场景必须声明的设备 ID；用于加载期校验，避免运行期 KeyError。
+REQUIRED_DEVICE_KEYS = (
+    "protection_device_id", "terminal_device_id", "breaker_device_id",
+    "reference_mu_id", "lagging_mu_id", "lagging_clock_id",
+)
+
+# 观察链路事件时监控的设备及其状态字段：(配置键, 状态字段, 显示标签)
+OBSERVED_DEVICES = (
+    ("lagging_clock_id", "timing_offset_us", "授时系统-2偏移"),
+    ("lagging_mu_id", "clock_offset_us", "合并单元-2时钟偏移"),
+    ("breaker_device_id", "position", "断路器位置"),
+)
+
+
+class TimingLab:
+    """授时实验观察器：独立对象，只读全站结果，不改写设备或 ``StepResult``。
+
+    与 :class:`sim2030.goose_lab.GooseLab` 结构对称：``Application`` 只持有一个
+    lab 对象，调度时调用它的 ``observe``/``view``，不直接触碰具体设备的私有方法。
+    """
+
+    def __init__(self, settings, device_ids):
+        if not isinstance(settings, dict):
+            raise ValueError("layout.timing_lab 必须是对象")
+        missing = [key for key in REQUIRED_DEVICE_KEYS if not settings.get(key)]
+        if missing:
+            raise ValueError(f"timing_lab 缺少配置项：{', '.join(missing)}")
+        unknown = [settings[key] for key in REQUIRED_DEVICE_KEYS if settings[key] not in device_ids]
+        if unknown:
+            raise ValueError(f"timing_lab 引用了不存在的设备：{', '.join(sorted(set(unknown)))}")
+        self.settings = dict(settings)
+        self.ids = {key: settings[key] for key in REQUIRED_DEVICE_KEYS}
+        self._observed = {}
+
+    def _protection(self, engine):
+        return engine.get_device(self.ids["protection_device_id"])
+
+    def observe(self, time_us, engine, result):
+        """记录差动跳闸指令的送达与关键设备状态变化；只读 ``result``。"""
+        protection = self._protection(engine)
+        if protection is None:
+            return
+        terminal_id = self.ids["terminal_device_id"]
+        for message in result.messages:
+            payload = message.payload or {}
+            if (message.receiver_id != terminal_id or message.business_type != BusinessType.COMMAND
+                    or payload.get("parameters", {}).get("source") != "timing_differential"
+                    or message.message_id in self._observed):
+                continue
+            # Engine results contain sends as well as deliveries; delivered messages
+            # also generate a downstream command whose sender is the terminal.
+            if not any(m.sender_id == terminal_id and m.related_request == message.related_request
+                       for m in result.messages):
+                continue
+            self._observed[message.message_id] = True
+            protection.record_chain_event(time_us, "智能终端接收差动跳闸指令，转发控制硬接线")
+        for key, field_name, label in OBSERVED_DEVICES:
+            device_id = self.ids[key]
+            value = result.device_snapshots.get(device_id, {}).get("state", {}).get(field_name)
+            previous = self._observed.get(device_id)
+            if value is not None and previous != value:
+                self._observed[device_id] = value
+                protection.record_chain_event(time_us, f"{label}：{value}", device_id=device_id)
+
+    def view(self, engine):
+        """现取保护装置的授时快照；设备不存在时返回 ``None`` 而不是抛错。"""
+        protection = self._protection(engine)
+        if protection is None:
+            return None
+        return protection.snapshot().get("timing")
+
+
+def _timing_override(spec):
+    """设备覆写钩子：声明 ``timing_role`` 的设备改用授时实验实现。"""
+    role = spec.parameters.get("timing_role")
+    if not role:
+        return None
+    if role not in FACTORIES:
+        raise ValueError(f"未知授时实验角色：{role}")
+    return FACTORIES[role](spec)
+
+
+_installed = False
+
+
+def install():
+    """注册授时实验的设备覆写钩子；重复调用不会重复注册。"""
+    global _installed
+    if _installed:
+        return
+    from sim2030.scenario import register_device_override
+
+    register_device_override(_timing_override)
+    _installed = True

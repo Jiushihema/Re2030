@@ -1,4 +1,5 @@
 """授时攻击的端到端因果链和保护边界，不依赖外部报文包。"""
+import copy
 import math
 from pathlib import Path
 import tempfile
@@ -8,7 +9,7 @@ from sim2030.application import Application
 from sim2030.contracts import Message
 from sim2030.presentation.views import build_system_view
 from sim2030.scenario import create_device, load_scenario
-from sim2030.timing import TimingProtection
+from sim2030.timing import TimingLab, TimingProtection
 
 SCENE = str(Path(__file__).resolve().parents[1] / "scenarios/substation-time-attack.json")
 
@@ -219,3 +220,68 @@ class TestTimingPairing(unittest.TestCase):
         p.evaluate_differential()
         self.assertEqual(p.report["pair"]["epoch"], 1)
         self.assertEqual(p.trip_count, 0)
+
+
+class TestTimingLabIsolation(unittest.TestCase):
+    """授时实验观察器与设备工厂解耦后的契约。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_lab_rejects_unknown_device_id(self):
+        """配置引用不存在的设备时，加载期就报错，而不是推演中途崩溃。"""
+        config = load_scenario(SCENE)
+        config.layout["timing_lab"]["protection_device_id"] = "no_such_device"
+        ids = {"diff_prot", "ctl_brk", "brk", "mu", "mu_2", "time_svc_2"}
+        with self.assertRaises(ValueError) as ctx:
+            TimingLab(config.layout["timing_lab"], ids)
+        self.assertIn("不存在的设备", str(ctx.exception))
+        self.assertIn("no_such_device", str(ctx.exception))
+
+    def test_lab_rejects_missing_device_key(self):
+        config = load_scenario(SCENE)
+        del config.layout["timing_lab"]["terminal_device_id"]
+        with self.assertRaises(ValueError) as ctx:
+            TimingLab(config.layout["timing_lab"], {"diff_prot"})
+        self.assertIn("缺少配置项", str(ctx.exception))
+        self.assertIn("terminal_device_id", str(ctx.exception))
+
+    def test_observe_does_not_mutate_step_result(self):
+        """观察链路事件只读 result，不得改写设备快照。"""
+        app = Application(output_root=self.tmp.name)
+        self.addCleanup(app.close)
+        app.load(SCENE)
+        app.start()
+        for _ in range(15):
+            app.step()
+        result = app.engine.step(app.current_time_us, app.dt_us)
+        before = copy.deepcopy(result.device_snapshots)
+        app.timing_lab.observe(app.current_time_us, app.engine, result)
+        self.assertEqual(before, result.device_snapshots)
+
+    def test_scenario_without_timing_lab_has_no_observer(self):
+        """其他场景不创建观察器，也不受授时模型影响。"""
+        app = Application(output_root=self.tmp.name)
+        self.addCleanup(app.close)
+        app.load(str(Path(SCENE).with_name("substation-live.json")))
+        self.assertIsNone(app.timing_lab)
+        self.assertIsNone(app.get_view("system").get("timing_lab"))
+        app.start()
+        app.step()
+
+    def test_device_override_hook_is_idempotent(self):
+        """重复 install() 不会重复注册覆写钩子。"""
+        from sim2030 import scenario, timing
+        timing.install()
+        first = len(scenario._DEVICE_OVERRIDES)
+        timing.install()
+        self.assertEqual(first, len(scenario._DEVICE_OVERRIDES))
+
+    def test_non_timing_device_bypasses_override(self):
+        """未声明 timing_role 的设备仍走常规工厂。"""
+        from sim2030.contracts import DeviceSpec
+        spec = DeviceSpec.from_dict(
+            {"device_id": "mu", "device_type": "acquisition", "layer": "process"})
+        device = create_device(spec)
+        self.assertNotIsInstance(device, TimingProtection)

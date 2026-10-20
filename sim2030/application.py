@@ -24,6 +24,8 @@ from sim2030.records import RunReader, RunRecorder
 from sim2030.scenario import load_scenario, validate_scenario
 from sim2030.goose_capture import GooseCapture
 from sim2030.goose_lab import GooseLab, configure_lab
+from sim2030 import timing
+from sim2030.timing import TimingLab
 
 STATUS_READY = "ready"
 STATUS_RUNNING = "running"
@@ -55,6 +57,7 @@ class Application:
         self.current_time_us: int = 0
         self.goose_capture = None
         self.goose_lab = None
+        self.timing_lab = None
         self.dt_us: int = 100000
         self.duration_us: int = 0
         self._device_ids: set = set()
@@ -111,6 +114,14 @@ class Application:
         self._pending_defense_requests = []
         self._defense_feedback = []
         self._recorded_defense_status = {}
+
+        # 授时实验：加载期校验设备 ID 并注册设备覆写，避免运行期才崩溃。
+        timing_settings = config.layout.get("timing_lab")
+        if timing_settings:
+            timing.install()
+            self.timing_lab = TimingLab(timing_settings, self._device_ids)
+        else:
+            self.timing_lab = None
 
         recognition_cfg = dict(config.recognition or {})
         self._recognition_enabled = bool(recognition_cfg.get("enabled", False))
@@ -375,8 +386,8 @@ class Application:
         if self.goose_lab:
             self.goose_lab.advance(self.current_time_us, self.engine)
         result = self.engine.step(self.current_time_us, self.dt_us)
-        if self.config.layout.get("timing_lab"):
-            self.engine.get_device("diff_prot").observe_chain(result)
+        if self.timing_lab:
+            self.timing_lab.observe(self.current_time_us, self.engine, result)
         if self.goose_lab:
             self.engine.refresh_environment(self.current_time_us, self.dt_us)
             self.goose_lab.observe(self.current_time_us, self.engine, result)
@@ -705,10 +716,9 @@ class Application:
         return result
 
     def _timing_view(self):
-        if not self.config or not self.config.layout.get("timing_lab"):
+        if self.timing_lab is None:
             return None
-        protection = self.engine.get_device("diff_prot")
-        return protection.snapshot().get("timing")
+        return self.timing_lab.view(self.engine)
 
     def _system_view(self) -> Dict[str, Any]:
         config = self.config
