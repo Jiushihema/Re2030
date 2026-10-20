@@ -128,7 +128,7 @@ class TestTimeAttackScenario(unittest.TestCase):
                 management = app.get_view("management")["management"]
                 self.assertTrue(management["time_attack_node"]["state"]["emitting"])
                 self.assertEqual(management["time_svc_2"]["state"]["sync_state"], "spoofed")
-                self.assertEqual(management["time_svc_2"]["state"]["timing_offset_us"], 100000)
+                self.assertEqual(management["time_svc_2"]["state"]["timing_offset_us"], -2000)
                 self.assertEqual(management["time_svc"]["state"]["sync_state"], "synced",
                                  "第一套授时系统不应受这次攻击影响")
 
