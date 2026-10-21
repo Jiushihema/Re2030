@@ -1,0 +1,30 @@
+.acoustic-page { color:#dbe8f6; font-size:13px; line-height:1.65; max-width:1300px; margin:auto; padding:8px; }
+.acoustic-page h2 { font-size:21px; margin:0; color:#f3f7fc; }
+.acoustic-page h3 { font-size:14px; margin:0 0 8px; color:#dceafa; }
+.acoustic-note { color:#a9bed2; margin:5px 0 12px; }
+.acoustic-warning { border-left:3px solid #f3bd62; background:#2b261c; color:#ffda9b; padding:8px 12px; margin:10px 0; }
+.acoustic-actions { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.acoustic-page button { border:1px solid #415973; border-radius:6px; padding:7px 10px; color:#e2eefb; background:#1b3046; cursor:pointer; font:inherit; }
+.acoustic-page button.primary { background:#075b60; border-color:#31cabb; }
+.acoustic-page button.danger { border-color:#dc8c62; color:#ffd2b4; }
+.acoustic-page button:disabled { opacity:.45; cursor:wait; }
+.acoustic-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.acoustic-stat,.acoustic-card { background:#0c1b2a; border:1px solid #2a4055; border-radius:8px; padding:12px; min-width:0; }
+.acoustic-stat strong { display:block; color:#5be0cf; font-size:21px; }
+.acoustic-flow { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; color:#a9bed2; }
+.acoustic-flow span { padding:6px 9px; border-radius:5px; background:#12343d; color:#b9eee8; }
+.acoustic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:12px 0; }
+.acoustic-card.full { grid-column:1/-1; }
+.acoustic-chart { width:100%; height:auto; display:block; }
+.acoustic-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:#a9bed2; }
+.acoustic-legend i { display:inline-block; width:18px; height:3px; vertical-align:middle; margin-right:4px; }
+.acoustic-axis { display:flex; gap:6px; margin-bottom:6px; }
+.acoustic-axis button.active { border-color:#53d8c7; color:#53d8c7; }
+.acoustic-table-wrap { max-height:260px; overflow:auto; }
+.acoustic-page table { width:100%; border-collapse:collapse; font-size:11px; text-align:left; }
+.acoustic-page td,.acoustic-page th { padding:6px; border-bottom:1px solid #23384c; overflow-wrap:anywhere; }
+.acoustic-page th { position:sticky; top:0; background:#132638; color:#cce6fa; }
+.acoustic-page details { margin-top:10px; color:#adc3d9; }
+.acoustic-page code { overflow-wrap:anywhere; }
+#acoustic-message { color:#ffd296; min-height:20px; }
+@media(max-width:1250px) { .acoustic-grid{grid-template-columns:1fr} .acoustic-stats{grid-template-columns:repeat(2,minmax(0,1fr))} }

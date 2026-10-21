@@ -1,0 +1,25 @@
+{
+  "source": "Texas Instruments fan_blade_ad_dataset / Normal / ADXL355",
+  "source_url": "https://github.com/TexasInstruments/tinyml-tensorlab/blob/main/tinyml-modelzoo/examples/fan_blade_fault_classification/readme_anomaly_detection.md",
+  "source_member": "classes/Normal/250305_motor_m0_label0_normal_vibData_1741169946799.csv",
+  "source_member_sha256": "88e32dbc3e0e885e12152086da84844a25a9f82eff67e8c3fd8e1532c4666563",
+  "source_zip_sha256": "5ef21de2de04cd887267e989193ae08fb1610e48874663083428337ef2b3fd3a",
+  "packaged_sha256": "9a8d6b463df8fb0b06634b5ba751c95e66e3802a25e5a69d83c510d94343fa15",
+  "rows": 16000,
+  "sample_rate_hz": 4000,
+  "unit": "raw count, not calibrated g or mm/s",
+  "use": "First 4 seconds repeated for software demonstration; no independent new measurements",
+  "reference_model_url": "https://www.analog.com/en/resources/analog-dialogue/articles/mems-vibration-monitoring-acceleration-to-velocity.html",
+  "reference_model": "ADXL356 X-axis illustrative model, f0=5500 Hz, Q=17, lowpass=1500 Hz; not calibrated ADXL355 response",
+  "coupling_weights_xyz": [
+    1,
+    0.6,
+    0.3
+  ],
+  "coupling_validated": false,
+  "gain_profiles": {
+    "weak_original": 0.3,
+    "strong_extended_demo": 0.9
+  },
+  "warning": "The .30 profile reuses the previous strong sample setting. .90 is an unvalidated normalized extension. Neither gain is sound pressure or a hardware attack guarantee."
+}
